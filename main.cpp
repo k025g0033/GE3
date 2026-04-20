@@ -2,6 +2,9 @@
 #include <cstdint>
 #include <string>
 #include <format>
+#include <filesystem>
+#include <fstream>
+#include <chrono>
 
 // ウィンドウプロシージャ
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -19,7 +22,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-void Log(const std::string& message) {
+void Log(std::ostream& os, const std::string& message) {
+	os << message << std::endl;
 	OutputDebugStringA(message.c_str());
 }
 
@@ -54,6 +58,29 @@ std::string ConvertString(const std::wstring& str) {
 
 // Windowsアプリケーションのエントリーポイント(main関数)
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
+
+	// ログのディレクトリを用意
+	std::filesystem::create_directory("logs");
+
+	// 現在時刻を取得（UTC時刻）
+	std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+
+	// 秒単位に変換
+	auto nowSeconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
+
+	// 日本時間（ローカル時間）に変換
+	std::chrono::zoned_time localTime{ std::chrono::current_zone(), nowSeconds };
+
+	// 文字列に変換（例：20231025_153045）
+	std::string dateString = std::format("{:%Y%m%d_%H%M%S}", localTime);
+
+	// ファイル名を決定（logs/20231025_153045.log のようになる）
+	std::string logFilePath = std::string("logs/") + dateString + ".log";
+
+	// ファイルを作って書き込み準備
+	std::ofstream logStream(logFilePath);
+
+	Log(logStream, "プログラムを開始しました。");
 
 	WNDCLASS wc{};
 	//　ウィンドウプロシージャ
@@ -97,28 +124,6 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 	// ウィンドウを表示する
 	ShowWindow(hwnd, SW_SHOW);
-
-	// 文字列を格納する
-	std::string str0{ "STRING!!!" };
-
-	// 整数を文字列に変換して格納する
-	std::string str1{ std::to_string(10) };
-
-	// 格納した中身をログに出してみる
-	Log(str0 + "\n");
-	Log(str1 + "\n");
-
-
-	int enemyHp = 100;
-	std::string texturePath{ "Resources/texture.png" };
-
-	// 変数から型を指摘してくれる
-	Log(std::format("enemyHp:{},texturePath:{}\n", enemyHp, texturePath));
-
-
-	std::wstring wstringValue = L"ConvertString";
-
-	Log(ConvertString(std::format(L"WSTRING:{}\n", wstringValue)));
 
 	MSG msg{};
 	// ウィンドウxボタンが押されるまでループ
