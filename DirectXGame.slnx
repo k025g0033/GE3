@@ -5,5 +5,5 @@
   <Folder Name="/ソリューション項目/">
     <File Path=".editorconfig" />
   </Folder>
-  <Project Path="DirectXGame.vcxproj" />
+  <Project Path="DirectXGame.vcxproj" Id="a7fe3062-5b4d-4052-9dbf-fa88b6b04626" />
 </Solution>

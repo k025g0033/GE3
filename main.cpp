@@ -1,7 +1,6 @@
 #include <Windows.h>
 #include <cstdint>
 
-
 // ウィンドウプロシージャ
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	//　メッセージに応じてゲーム固有の処理を行う
