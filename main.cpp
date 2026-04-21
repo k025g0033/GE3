@@ -5,9 +5,13 @@
 #include <d3d12.h>
 #include <dxgi1_6.h>
 #include <cassert>
+#include <dbgHelp.h>
+#include <dbgHelp.h>
+#include <strsafe.h>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "dbghelp.lib")
 
 // ウィンドウプロシージャ
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -61,9 +65,48 @@ std::string ConvertString(const std::wstring& str) {
 	return result;
 }
 
+static LONG WINAPI ExportDump(EXCEPTION_POINTERS* exception) {
+	// 時刻を取得してファイル名にする
+	SYSTEMTIME time;
+	GetLocalTime(&time);
+
+	wchar_t filePath[MAX_PATH] = { 0 };
+
+	// Dumpsフォルダを作成（既にあれば何もしない）
+	CreateDirectory(L"./Dumps", nullptr);
+
+	// ファイルパスを生成（例：./Dumps/20231027-1230.dmp）
+	StringCchPrintfW(filePath, MAX_PATH, L"./Dumps/%04d-%02d%02d-%02d%02d.dmp",
+		time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute);
+
+	// ダンプファイルを開く
+	HANDLE dumpFileHandle = CreateFile(filePath, GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_WRITE | FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
+
+	// 各種IDの取得
+	DWORD processId = GetCurrentProcessId();
+	DWORD threadId = GetCurrentThreadId();
+
+	// ダンプ出力用の設定
+	MINIDUMP_EXCEPTION_INFORMATION minidumpInformation{ 0 };
+	minidumpInformation.ThreadId = threadId;
+	minidumpInformation.ExceptionPointers = exception;
+	minidumpInformation.ClientPointers = TRUE;
+
+	// 実際にダンプを出力
+	MiniDumpWriteDump(GetCurrentProcess(), processId, dumpFileHandle,
+		MiniDumpNormal, &minidumpInformation, nullptr, nullptr);
+
+	// ファイルを閉じる
+	CloseHandle(dumpFileHandle);
+
+	return EXCEPTION_EXECUTE_HANDLER;
+}
 
 // Windowsアプリケーションのエントリーポイント(main関数)
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
+
+	SetUnhandledExceptionFilter(ExportDump);
 
 	WNDCLASS wc{};
 	//　ウィンドウプロシージャ
@@ -158,6 +201,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// デバイスの生成がうまくいかなったので起動できない
 	assert(device != nullptr);
 	Log("Complete create D3D12Device!!!\n");
+
+	uint32_t* p = nullptr;
+	*p = 100;
 
 	MSG msg{};
 	// ウィンドウxボタンが押されるまでループ
