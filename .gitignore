@@ -364,6 +364,3 @@ FodyWeavers.xsd
 
 *.log
 /logs
-
-*.dmp
-Dumps/

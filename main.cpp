@@ -2,16 +2,6 @@
 #include <cstdint>
 #include <string>
 #include <format>
-#include <d3d12.h>
-#include <dxgi1_6.h>
-#include <cassert>
-#include <dbgHelp.h>
-#include <dbgHelp.h>
-#include <strsafe.h>
-
-#pragma comment(lib, "d3d12.lib")
-#pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "dbghelp.lib")
 
 // ウィンドウプロシージャ
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -31,10 +21,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 
 void Log(const std::string& message) {
 	OutputDebugStringA(message.c_str());
-}
-
-void Log(const std::wstring& message) {
-	OutputDebugStringW(message.c_str());
 }
 
 std::wstring ConvertString(const std::string& str) {
@@ -65,48 +51,9 @@ std::string ConvertString(const std::wstring& str) {
 	return result;
 }
 
-static LONG WINAPI ExportDump(EXCEPTION_POINTERS* exception) {
-	// 時刻を取得してファイル名にする
-	SYSTEMTIME time;
-	GetLocalTime(&time);
-
-	wchar_t filePath[MAX_PATH] = { 0 };
-
-	// Dumpsフォルダを作成（既にあれば何もしない）
-	CreateDirectory(L"./Dumps", nullptr);
-
-	// ファイルパスを生成（例：./Dumps/20231027-1230.dmp）
-	StringCchPrintfW(filePath, MAX_PATH, L"./Dumps/%04d-%02d%02d-%02d%02d.dmp",
-		time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute);
-
-	// ダンプファイルを開く
-	HANDLE dumpFileHandle = CreateFile(filePath, GENERIC_READ | GENERIC_WRITE,
-		FILE_SHARE_WRITE | FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
-
-	// 各種IDの取得
-	DWORD processId = GetCurrentProcessId();
-	DWORD threadId = GetCurrentThreadId();
-
-	// ダンプ出力用の設定
-	MINIDUMP_EXCEPTION_INFORMATION minidumpInformation{ 0 };
-	minidumpInformation.ThreadId = threadId;
-	minidumpInformation.ExceptionPointers = exception;
-	minidumpInformation.ClientPointers = TRUE;
-
-	// 実際にダンプを出力
-	MiniDumpWriteDump(GetCurrentProcess(), processId, dumpFileHandle,
-		MiniDumpNormal, &minidumpInformation, nullptr, nullptr);
-
-	// ファイルを閉じる
-	CloseHandle(dumpFileHandle);
-
-	return EXCEPTION_EXECUTE_HANDLER;
-}
 
 // Windowsアプリケーションのエントリーポイント(main関数)
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
-
-	SetUnhandledExceptionFilter(ExportDump);
 
 	WNDCLASS wc{};
 	//　ウィンドウプロシージャ
@@ -151,59 +98,27 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// ウィンドウを表示する
 	ShowWindow(hwnd, SW_SHOW);
 
-	// DXGIファクトリーの生成
-	IDXGIFactory7* dxgiFactory = nullptr;
-	// HRESULTはWindows系のエラーコードであり、
-	// 関数が成功したかどうかをSUCCEEDEDマクロで判定できる
-	HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory));
-	// 初期化の根本的な部分エラーが出た場合はプログラムが間違っているか、どうにもできない場合が多いのでassertにしておく
-	assert(SUCCEEDED(hr));
+	// 文字列を格納する
+	std::string str0{ "STRING!!!" };
 
-	// 使用するアダプタ用の変数。最初にnullptrを入れておく
-	IDXGIAdapter4* useAdapter = nullptr;
-	// 良い順にアダプタを積む
-	for (UINT i = 0; dxgiFactory->EnumAdapterByGpuPreference(i,
-		DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&useAdapter)) !=
-		DXGI_ERROR_NOT_FOUND; i++) {
-		// アダプターの情報を取得する
-		DXGI_ADAPTER_DESC3 adapterDesc{};
-		hr = useAdapter->GetDesc3(&adapterDesc);
-		assert(SUCCEEDED(hr)); // 取得できないのは一大事
-		// ソフトウェアアダプタでなければ採用!
-		if (!(adapterDesc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE)) {
-			// 採用したアダプタの情報をログに出力。wstringのほうなので注意
-			Log(std::format(L"Use Adapter:{}\n", adapterDesc.Description));
-			break;
-		}
-		useAdapter = nullptr; // ソフトウェアアダプタの場合は見なかったことにする
-	}
-	// 適切なアダプタが見つからなかったので起動できない
-	assert(useAdapter != nullptr);
+	// 整数を文字列に変換して格納する
+	std::string str1{ std::to_string(10) };
 
-	ID3D12Device* device = nullptr;
-	// 機能レベルとログ出力用の文字列
-	D3D_FEATURE_LEVEL featureLevels[] = {
-		D3D_FEATURE_LEVEL_12_2,D3D_FEATURE_LEVEL_12_1,D3D_FEATURE_LEVEL_12_0
-	};
-	const char* featureLevelString[] = {
-		"12.2","12.1","12.0"
-	};
-	// 高い順に生成できるか試していく
-	for (size_t i = 0;i < _countof(featureLevels);++i) {
-		// 採用したアダプターでデバイスを生成
-		hr = D3D12CreateDevice(useAdapter, featureLevels[i], IID_PPV_ARGS(&device));
-		// 指定した機能レベルでデバイスが生成できたかを確認
-		if (SUCCEEDED(hr)) {
-			Log(std::format("FeatureLevel :{}\n", featureLevelString[i]));
-			break;
-		}
-	}
-	// デバイスの生成がうまくいかなったので起動できない
-	assert(device != nullptr);
-	Log("Complete create D3D12Device!!!\n");
+	// 格納した中身をログに出してみる
+	Log(str0 + "\n");
+	Log(str1 + "\n");
 
-	uint32_t* p = nullptr;
-	*p = 100;
+
+	int enemyHp = 100;
+	std::string texturePath{ "Resources/texture.png" };
+
+	// 変数から型を指摘してくれる
+	Log(std::format("enemyHp:{},texturePath:{}\n", enemyHp, texturePath));
+
+
+	std::wstring wstringValue = L"ConvertString";
+
+	Log(ConvertString(std::format(L"WSTRING:{}\n", wstringValue)));
 
 	MSG msg{};
 	// ウィンドウxボタンが押されるまでループ
