@@ -860,17 +860,15 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// バッファの場合はこれにする決まり
 	vertexResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-	// WVP用のリソースを作る。Matrix4x4 1つ分のサイズを用意する
-	ID3D12Resource* wvpResource = CreateBufferResource(device, sizeof(Matrix4x4));
+	// 三角形の数（2つ分）の定数バッファとデータポインタを用意する
+	std::vector<ID3D12Resource*> wvpResources(2);
+	std::vector<Matrix4x4*> wvpDatas(2);
 
-	// データを書き込む
-	Matrix4x4* wvpData = nullptr;
-
-	// 書き込むためのアドレスを取得
-	wvpResource->Map(0, nullptr, reinterpret_cast<void**>(&wvpData));
-
-	// 単位行列を書き込んでおく
-	*wvpData = MakeIdentity4x4();
+	for (size_t i = 0; i < wvpResources.size(); ++i) {
+		wvpResources[i] = CreateBufferResource(device, sizeof(Matrix4x4));
+		wvpResources[i]->Map(0, nullptr, reinterpret_cast<void**>(&wvpDatas[i]));
+		*wvpDatas[i] = MakeIdentity4x4();
+	}
 
 	// 実際に頂点リソースを作る
 	ID3D12Resource* vertexResource = CreateBufferResource(device,sizeof(VertexData) * 6);
@@ -903,22 +901,13 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	vertexData[2].position = { 0.5f, -0.5f, 0.0f, 1.0f };
 	vertexData[2].texcoord = { 1.0f,1.0f };
 
-	// 左下2
-	vertexData[3].position = { -0.5f, -0.5f, 0.5f, 1.0f };
-	vertexData[3].texcoord = { 0.0f,1.0f };
-	// 上2
-	vertexData[4].position = { 0.0f, 0.0f, 0.0f, 1.0f };
-	vertexData[4].texcoord = { 0.5f,0.0f };
-	// 右下2
-	vertexData[5].position = { 0.5f, -0.5f, -0.5f, 1.0f };
-	vertexData[5].texcoord = { 1.0f,1.0f };
 
 	// 頂点バッファビューを作成する
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView{};
 	// リソースの先頭のアドレスから使う
 	vertexBufferView.BufferLocation = vertexResource->GetGPUVirtualAddress();
 	// 使用するリソースのサイズは頂点3つ分のサイズ
-	vertexBufferView.SizeInBytes = sizeof(VertexData) * 6;
+	vertexBufferView.SizeInBytes = sizeof(VertexData) * 3;
 	// 1頂点あたりのサイズ
 	vertexBufferView.StrideInBytes = sizeof(VertexData);
 
@@ -1009,10 +998,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	MSG msg{};
 
 	// Transform変数を作る
-	Transform transform{
-		{1.0f,1.0f,1.0f},
-		{0.0f,0.0f,0.0f},
-		{0.0f,0.0f,0.0f}
+	std::vector<Transform> transforms = {
+	{ {1.0f,1.0f,1.0f}, {0.0f,0.0f,0.0f}, {0.0f, 0.0f, 0.0f} },
+	{ {1.0f,0.8f,1.0f}, {0.0f,1.2f,0.0f}, { 0.0f, 0.0f, 0.0f} } 
 	};
 
 	Transform cameraTransform{
@@ -1020,11 +1008,6 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		{0.0f,0.0f,0.0f},
 		{0.0f,0.0f,-5.0f}
 	};
-
-	Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
-	Matrix4x4 cameraMatrix = MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate);
-	Matrix4x4 viewMatrix = Inverse(cameraMatrix);
-	Matrix4x4 projectionMatrix = MakePerspectiveForMatrix(0.45f, float(kClientWidth) / float(kClientHeight), 0.1f, 100.0f);
 
 	// ImGuiの初期化。詳細はさして重要ではないので解説は省略する。
 	// こういうもんである
@@ -1057,19 +1040,42 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			ImGui_ImplDX12_NewFrame();
 			ImGui_ImplWin32_NewFrame();
 			ImGui::NewFrame();
+
+			ImGui::Begin("Settings");
+			if (materialData) {
+				ImGui::Text("Material");
+				ImGui::ColorEdit4("Color", &materialData->x); // ラベルをColorに変更
+			}
+
+			ImGui::Separator();
+
+			// 配列の要素数分、ImGuiのUIをループで回す
+			for (size_t i = 0; i < transforms.size(); ++i) {
+				// 各オブジェクトごとに一意のラベルを作成 (例: "Object 0", "Object 1")
+				std::string treeLabel = std::format("Object {}", i);
+
+				if (ImGui::TreeNode(treeLabel.c_str())) {
+					// ImGuiのID衝突を防ぐため、ID指定用文字列（"##0"など）をコントロール名に付与します
+					ImGui::DragFloat3(std::format("Translate##{}", i).c_str(), &transforms[i].translate.x, 0.01f);
+					ImGui::DragFloat3(std::format("Rotation##{}", i).c_str(), &transforms[i].rotate.x, 0.01f);
+					ImGui::DragFloat3(std::format("Scale##{}", i).c_str(), &transforms[i].scale.x, 0.01f);
+					ImGui::TreePop();
+				}
+			}
+
+			// 全リセットボタン
+			if (ImGui::Button("Reset All Transforms")) {
+				transforms[0] = { {1.0f,1.0f,1.0f}, {0.0f,0.0f,0.0f}, {0.0f, 0.0f, 0.0f} };
+				transforms[1] = { {1.0f,0.8f,1.0f}, {0.0f,1.2f,0.0f}, { 0.0f, 0.0f, 0.0f} };
+			}
+			ImGui::End();
 #endif
 
 			// ゲームの処理
 
-			materialData->x = 1.0f; // R
-			materialData->y = 1.0f; // G
-			materialData->z = 1.0f; // B
-			materialData->w = 1.0f; // A
-
-			transform.rotate.y += 0.03f;
-			Matrix4x4 worldMatrix = MakeAffineMatrix(transform.scale, transform.rotate, transform.translate);
-			Matrix4x4 worldViewProjectionMatrix = Multiply(worldMatrix, Multiply(viewMatrix, projectionMatrix));
-			*wvpData = worldViewProjectionMatrix;
+			Matrix4x4 cameraMatrix = MakeAffineMatrix(cameraTransform.scale, cameraTransform.rotate, cameraTransform.translate);
+			Matrix4x4 viewMatrix = Inverse(cameraMatrix);
+			Matrix4x4 projectionMatrix = MakePerspectiveForMatrix(0.45f, float(kClientWidth) / float(kClientHeight), 0.1f, 100.0f);
 
 #ifdef USE_IMGUI
 			ImGui::ShowDemoWindow();
@@ -1128,11 +1134,20 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 			// SRVのDescriptorTableの先頭を設定。2はrootParameter[2]である。
 			commandList->SetGraphicsRootDescriptorTable(2,textureSrvHandleGPU);
 
-			// wvp用のCBufferの場所を設定
-			commandList->SetGraphicsRootConstantBufferView(1, wvpResource->GetGPUVirtualAddress());
+			for (size_t i = 0; i < transforms.size(); ++i) {
+				// 各オブジェクトのワールド行列・WVP行列を計算
+				Matrix4x4 worldMatrix = MakeAffineMatrix(transforms[i].scale, transforms[i].rotate, transforms[i].translate);
+				Matrix4x4 worldViewProjectionMatrix = Multiply(worldMatrix, Multiply(viewMatrix, projectionMatrix));
 
-			// 描画！(DrawCall/ドローコール)。3頂点で1つのインスタンス。インスタンスについては今後
-			commandList->DrawInstanced(6, 1, 0, 0);
+				// それぞれ個別のデータポインタ（wvpDatas[i]）に書き込む
+				*wvpDatas[i] = worldViewProjectionMatrix;
+
+				// それぞれ個別のバッファ（wvpResources[i]）のGPU仮想アドレスをセットする
+				commandList->SetGraphicsRootConstantBufferView(1, wvpResources[i]->GetGPUVirtualAddress());
+
+				// 描画！
+				commandList->DrawInstanced(3, 1, 0, 0);
+			}
 
 #ifdef USE_IMGUI
 			ImGui::Render();
@@ -1204,6 +1219,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	signatureBlob->Release();
 	if (errorBlob) {
 		errorBlob->Release();
+	}
+	for (auto* resource : wvpResources) {
+		if (resource) {
+			resource->Release();
+		}
 	}
 	rootSignature->Release();
 	pixelShaderBlob->Release();
