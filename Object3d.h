@@ -5,6 +5,9 @@
 #include <d3d12.h>
 #include <wrl.h>
 #include <cstdint>
+#include <string>
+
+ModelData LoadObjFile(const std::string& directoryPath, const std::string& filename);
 
 // 3Dオブジェクト1個分の形状・姿勢・マテリアル・描画処理を管理するクラス。
 class Object3d {
@@ -21,13 +24,13 @@ public:
 	Material& GetMaterial() { return *materialData_; }
 
 private:
-	void CreateSphereVertices(ID3D12Device* device);
-	Microsoft::WRL::ComPtr<ID3D12Resource> CreateBuffer(
-		ID3D12Device* device, size_t sizeInBytes);
+	void CreateModelVertices(ID3D12Device* device);
 
-	static constexpr uint32_t kSubdivision = 16;
-	static constexpr uint32_t kVertexCount =
-		kSubdivision * kSubdivision * 6;
+	Microsoft::WRL::ComPtr<ID3D12Resource> CreateBuffer(
+		ID3D12Device* device,
+		size_t sizeInBytes);
+
+	uint32_t vertexCount_ = 0;
 
 	Transform transform_{};
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_;

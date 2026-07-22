@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 // CPU側とシェーダー側で共有する、描画に必要な基本データ型。
 struct Vector2 {
@@ -39,6 +40,10 @@ struct VertexData {
 	Vector4 position;
 	Vector2 texcoord;
 	Vector3 normal;
+};
+
+struct ModelData {
+	std::vector<VertexData> vertices;
 };
 
 struct Material {

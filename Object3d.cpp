@@ -4,9 +4,95 @@
 
 #include <cassert>
 #include <cmath>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <cstring>
+
+ModelData LoadObjFile(
+	const std::string& directoryPath,
+	const std::string& filename) {
+
+	ModelData modelData;
+	std::vector<Vector4> positions;
+	std::vector<Vector3> normals;
+	std::vector<Vector2> texcoords;
+	std::string line;
+
+	std::ifstream file(directoryPath + "/" + filename);
+	assert(file.is_open());
+
+	while (std::getline(file, line)) {
+		std::string identifier;
+		std::istringstream s(line);
+		s >> identifier;
+
+		if (identifier == "v") {
+			Vector4 position;
+			s >> position.x >> position.y >> position.z;
+			position.x *= -1.0f;
+			position.w = 1.0f;
+			positions.push_back(position);
+
+		} else if (identifier == "vt") {
+			Vector2 texcoord;
+			s >> texcoord.x >> texcoord.y;
+			texcoord.y = 1.0f - texcoord.y;
+			texcoords.push_back(texcoord);
+
+		} else if (identifier == "vn") {
+			Vector3 normal;
+			s >> normal.x >> normal.y >> normal.z; 
+			normal.x *= -1.0f;
+			normals.push_back(normal);
+
+		} else if (identifier == "f") {
+			VertexData triangle[3];
+			for (uint32_t faceVertex = 0;
+				faceVertex < 3;
+				++faceVertex) {
+
+				std::string vertexDefinition;
+				s >> vertexDefinition;
+
+				std::istringstream v(vertexDefinition);
+				uint32_t elementIndices[3];
+
+				for (uint32_t element = 0;
+					element < 3;
+					++element) {
+
+					std::string index;
+					std::getline(v, index, '/');
+					elementIndices[element] = std::stoi(index);
+				}
+
+				const Vector4 position =
+					positions[elementIndices[0] - 1];
+				const Vector2 texcoord =
+					texcoords[elementIndices[1] - 1];
+				const Vector3 normal =
+					normals[elementIndices[2] - 1];
+
+				triangle[faceVertex] = {
+					position,
+					texcoord,
+					normal,
+				};
+
+			}
+			modelData.vertices.push_back(triangle[2]);
+			modelData.vertices.push_back(triangle[1]);
+			modelData.vertices.push_back(triangle[0]);
+		}
+	}
+
+	return modelData;
+}
 
 void Object3d::Initialize(ID3D12Device* device) {
-	CreateSphereVertices(device);
+	CreateModelVertices(device);
 
 	materialResource_ = CreateBuffer(device, sizeof(Material));
 	HRESULT hr = materialResource_->Map(
@@ -23,7 +109,6 @@ void Object3d::Initialize(ID3D12Device* device) {
 }
 
 void Object3d::Update(const Matrix4x4& viewProjectionMatrix) {
-	transform_.rotate.y += 0.02f;
 	const Matrix4x4 worldMatrix = MakeAffineMatrix(
 		transform_.scale, transform_.rotate, transform_.translate);
 	transformationData_->WVP = Multiply(worldMatrix, viewProjectionMatrix);
@@ -41,7 +126,7 @@ void Object3d::Draw(
 	commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
 	commandList->SetGraphicsRootConstantBufferView(
 		1, transformationResource_->GetGPUVirtualAddress());
-	commandList->DrawInstanced(kVertexCount, 1, 0, 0);
+	commandList->DrawInstanced(vertexCount_, 1, 0, 0);
 }
 
 void Object3d::Reset() {
@@ -50,78 +135,53 @@ void Object3d::Reset() {
 		{0.0f, 0.0f, 0.0f},
 		{0.0f, 0.0f, 0.0f},
 	};
-	materialData_->color = {1.0f, 1.0f, 1.0f, 1.0f};
+	materialData_->color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	materialData_->enableLighting = true;
 	materialData_->uvTransform = MakeIdentity4x4();
 	transformationData_->WVP = MakeIdentity4x4();
 	transformationData_->World = MakeIdentity4x4();
 }
 
-void Object3d::CreateSphereVertices(ID3D12Device* device) {
-	vertexResource_ = CreateBuffer(
-		device, sizeof(VertexData) * kVertexCount);
+void Object3d::CreateModelVertices(ID3D12Device* device) {
+	// OBJファイルから頂点情報を読み込む
+	const ModelData modelData =
+		LoadObjFile("Resources", "plane.obj");
+
+	// 読み込んだ頂点数を保存する
+	vertexCount_ =
+		static_cast<uint32_t>(modelData.vertices.size());
+
+	// 頂点バッファを作成する
+	const size_t vertexBufferSize =
+		sizeof(VertexData) * modelData.vertices.size();
+
+	vertexResource_ =
+		CreateBuffer(device, vertexBufferSize);
+
+	// 頂点バッファビューを設定する
 	vertexBufferView_.BufferLocation =
 		vertexResource_->GetGPUVirtualAddress();
-	vertexBufferView_.SizeInBytes = sizeof(VertexData) * kVertexCount;
-	vertexBufferView_.StrideInBytes = sizeof(VertexData);
 
-	VertexData* vertices = nullptr;
-	HRESULT hr = vertexResource_->Map(
-		0, nullptr, reinterpret_cast<void**>(&vertices));
+	vertexBufferView_.SizeInBytes =
+		static_cast<UINT>(vertexBufferSize);
+
+	vertexBufferView_.StrideInBytes =
+		sizeof(VertexData);
+
+	// 頂点バッファへモデルの頂点データをコピーする
+	VertexData* vertexData = nullptr;
+
+	const HRESULT hr = vertexResource_->Map(
+		0,
+		nullptr,
+		reinterpret_cast<void**>(&vertexData));
+
 	assert(SUCCEEDED(hr));
 
-	constexpr float pi = 3.1415926535f;
-	constexpr float latitudeStep = pi / kSubdivision;
-	constexpr float longitudeStep = 2.0f * pi / kSubdivision;
-	for (uint32_t latitudeIndex = 0;
-		 latitudeIndex < kSubdivision; ++latitudeIndex) {
-		const float latitude =
-			-pi / 2.0f + latitudeStep * latitudeIndex;
-		for (uint32_t longitudeIndex = 0;
-			 longitudeIndex < kSubdivision; ++longitudeIndex) {
-			const float longitude = longitudeStep * longitudeIndex;
-			const uint32_t start =
-				(latitudeIndex * kSubdivision + longitudeIndex) * 6;
-			const float nextLatitude = latitude + latitudeStep;
-			const float nextLongitude = longitude + longitudeStep;
-
-			const Vector4 positions[4] = {
-				{std::cos(latitude) * std::cos(longitude),
-				 std::sin(latitude),
-				 std::cos(latitude) * std::sin(longitude), 1.0f},
-				{std::cos(nextLatitude) * std::cos(longitude),
-				 std::sin(nextLatitude),
-				 std::cos(nextLatitude) * std::sin(longitude), 1.0f},
-				{std::cos(latitude) * std::cos(nextLongitude),
-				 std::sin(latitude),
-				 std::cos(latitude) * std::sin(nextLongitude), 1.0f},
-				{std::cos(nextLatitude) * std::cos(nextLongitude),
-				 std::sin(nextLatitude),
-				 std::cos(nextLatitude) * std::sin(nextLongitude), 1.0f},
-			};
-			const uint32_t positionIndices[6] = {0, 1, 2, 2, 1, 3};
-			const float u = static_cast<float>(longitudeIndex) / kSubdivision;
-			const float v = 1.0f -
-				static_cast<float>(latitudeIndex) / kSubdivision;
-			const float nextU =
-				static_cast<float>(longitudeIndex + 1) / kSubdivision;
-			const float nextV = 1.0f -
-				static_cast<float>(latitudeIndex + 1) / kSubdivision;
-			const Vector2 texcoords[4] = {
-				{u, v}, {u, nextV}, {nextU, v}, {nextU, nextV}};
-
-			for (uint32_t index = 0; index < 6; ++index) {
-				const uint32_t source = positionIndices[index];
-				vertices[start + index].position = positions[source];
-				vertices[start + index].normal = {
-					positions[source].x,
-					positions[source].y,
-					positions[source].z,
-				};
-				vertices[start + index].texcoord = texcoords[source];
-			}
-		}
-	}
+	std::memcpy(
+		vertexData,
+		modelData.vertices.data(),
+		vertexBufferSize);
 }
 
 Microsoft::WRL::ComPtr<ID3D12Resource> Object3d::CreateBuffer(
