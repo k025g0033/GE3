@@ -52,6 +52,7 @@ void Object3d::Reset() {
 	};
 	materialData_->color = {1.0f, 1.0f, 1.0f, 1.0f};
 	materialData_->enableLighting = true;
+	materialData_->uvTransform = MakeIdentity4x4();
 	transformationData_->WVP = MakeIdentity4x4();
 	transformationData_->World = MakeIdentity4x4();
 }

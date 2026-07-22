@@ -16,6 +16,7 @@ public:
 	void Reset();
 
 	Transform& GetTransform() { return transform_; }
+	Transform& GetUVTransform() { return uvTransform_; }
 	Material& GetMaterial() { return *materialData_; }
 
 private:
@@ -23,6 +24,7 @@ private:
 		ID3D12Device* device, size_t sizeInBytes);
 
 	Transform transform_{};
+	Transform uvTransform_{};
 	Microsoft::WRL::ComPtr<ID3D12Resource> vertexResource_;
 	D3D12_VERTEX_BUFFER_VIEW vertexBufferView_{};
 	Microsoft::WRL::ComPtr<ID3D12Resource> indexResource_;

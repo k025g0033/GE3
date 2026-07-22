@@ -163,6 +163,21 @@ void Game::Update() {
 		ImGui::ColorEdit4(
 			"Color##Sprite",
 			&state_->sprite.GetMaterial().color.x);
+		ImGui::DragFloat2(
+			"UV Translate##Sprite",
+			&state_->sprite.GetUVTransform().translate.x,
+			0.01f,
+			-10.0f,
+			10.0f);
+		ImGui::DragFloat2(
+			"UV Scale##Sprite",
+			&state_->sprite.GetUVTransform().scale.x,
+			0.01f,
+			-10.0f,
+			10.0f);
+		ImGui::SliderAngle(
+			"UV Rotate##Sprite",
+			&state_->sprite.GetUVTransform().rotate.z);
 		bool lighting =
 			state_->sprite.GetMaterial().enableLighting != 0;
 		if (ImGui::Checkbox("Enable Lighting##Sprite", &lighting)) {

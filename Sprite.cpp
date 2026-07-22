@@ -61,6 +61,15 @@ void Sprite::Update(float screenWidth, float screenHeight) {
 		0.0f, 0.0f, screenWidth, screenHeight, 0.0f, 100.0f);
 	transformationData_->WVP = Multiply(worldMatrix, projectionMatrix);
 	transformationData_->World = worldMatrix;
+	Matrix4x4 uvTransformMatrix =
+		MakeScaleMatrix(uvTransform_.scale);
+	uvTransformMatrix = Multiply(
+		uvTransformMatrix,
+		MakeRotateZMatrix(uvTransform_.rotate.z));
+	uvTransformMatrix = Multiply(
+		uvTransformMatrix,
+		MakeTranslateMatrix(uvTransform_.translate));
+	materialData_->uvTransform = uvTransformMatrix;
 }
 
 void Sprite::Draw(
@@ -86,8 +95,14 @@ void Sprite::Reset() {
 		{0.0f, 0.0f, 0.0f},
 		{0.0f, 0.0f, 0.0f},
 	};
+	uvTransform_ = {
+	 {1.0f, 1.0f, 1.0f},
+	 {0.0f, 0.0f, 0.0f},
+	 {0.0f, 0.0f, 0.0f},
+	};
 	materialData_->color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	materialData_->enableLighting = false;
+	materialData_->uvTransform = MakeIdentity4x4();
 	transformationData_->WVP = MakeIdentity4x4();
 	transformationData_->World = MakeIdentity4x4();
 }
