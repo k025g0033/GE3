@@ -14,12 +14,31 @@ void Sprite::Initialize(ID3D12Device* device) {
 	HRESULT hr = vertexResource_->Map(
 		0, nullptr, reinterpret_cast<void**>(&vertices));
 	assert(SUCCEEDED(hr));
-	vertices[0] = {{0.0f, 360.0f, 0.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, -1.0f}};
-	vertices[1] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}};
-	vertices[2] = {{640.0f, 360.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, -1.0f}};
-	vertices[3] = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}};
-	vertices[4] = {{640.0f, 0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}};
-	vertices[5] = {{640.0f, 360.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, -1.0f}};
+	vertices[0] = { {0.0f, 360.0f, 0.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f, -1.0f} };
+	vertices[1] = { {0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, -1.0f} };
+	vertices[2] = { {640.0f, 360.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, -1.0f} };
+	vertices[3] = { {0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, {0.0f, 0.0f, -1.0f} };
+	vertices[4] = { {640.0f, 0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 0.0f, -1.0f} };
+	vertices[5] = { {640.0f, 360.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, {0.0f, 0.0f, -1.0f} };
+
+	indexResource_ = CreateBuffer(device, sizeof(uint32_t) * 6);
+
+	indexBufferView_.BufferLocation =
+		indexResource_->GetGPUVirtualAddress();
+	indexBufferView_.SizeInBytes = sizeof(uint32_t) * 6;
+	indexBufferView_.Format = DXGI_FORMAT_R32_UINT;
+
+	uint32_t* indices = nullptr;
+	hr = indexResource_->Map(
+		0, nullptr, reinterpret_cast<void**>(&indices));
+	assert(SUCCEEDED(hr));
+
+	indices[0] = 0;
+	indices[1] = 1;
+	indices[2] = 2;
+	indices[3] = 3;
+	indices[4] = 4;
+	indices[5] = 5;
 
 	materialResource_ = CreateBuffer(device, sizeof(Material));
 	hr = materialResource_->Map(
@@ -49,11 +68,16 @@ void Sprite::Draw(
 	D3D12_GPU_DESCRIPTOR_HANDLE textureHandle) const {
 	commandList->SetGraphicsRootConstantBufferView(
 		0, materialResource_->GetGPUVirtualAddress());
-	commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
+	commandList->IASetVertexBuffers(
+		0, 1, &vertexBufferView_);
+	commandList->IASetIndexBuffer(
+		&indexBufferView_);
 	commandList->SetGraphicsRootConstantBufferView(
 		1, transformationResource_->GetGPUVirtualAddress());
-	commandList->SetGraphicsRootDescriptorTable(2, textureHandle);
-	commandList->DrawInstanced(6, 1, 0, 0);
+	commandList->SetGraphicsRootDescriptorTable(
+		2, textureHandle);
+	commandList->DrawIndexedInstanced(
+		6, 1, 0, 0, 0);
 }
 
 void Sprite::Reset() {
@@ -62,7 +86,7 @@ void Sprite::Reset() {
 		{0.0f, 0.0f, 0.0f},
 		{0.0f, 0.0f, 0.0f},
 	};
-	materialData_->color = {1.0f, 1.0f, 1.0f, 1.0f};
+	materialData_->color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	materialData_->enableLighting = false;
 	transformationData_->WVP = MakeIdentity4x4();
 	transformationData_->World = MakeIdentity4x4();
