@@ -85,10 +85,41 @@ ModelData LoadObjFile(
 			modelData.vertices.push_back(triangle[2]);
 			modelData.vertices.push_back(triangle[1]);
 			modelData.vertices.push_back(triangle[0]);
+		} else if (identifier == "mtllib") {
+			// materialTemplateLibraryファイルの名前を取得する
+			std::string materialFilename;
+			s >> materialFilename;
+			// 基本的にobjファイルと同一階層にmtlは存在させるので、ディレクトリ名とファイル名を渡す
+			modelData.material = LoadMaterialTemplateFile(directoryPath, materialFilename);
 		}
 	}
 
 	return modelData;
+}
+
+MaterialData LoadMaterialTemplateFile(
+	const std::string& directoryPath,
+	const std::string& filename) {
+	MaterialData materialData; // 構造するMaterialData
+	std::string line; // ファイルから読み込んだ1行を格納するもの
+	std::ifstream file(directoryPath + "/" + filename); // ファイルを開く
+	assert(file.is_open()); // とりあえず開けなかったら止める
+
+	while (std::getline(file, line)) {
+		std::string identifier;
+		std::istringstream s(line);
+		s >> identifier;
+
+		// identifierに応じた処理
+		if (identifier == "map_Kd") {
+			std::string textureFilename;
+			s >> textureFilename;
+			// 連結してファイルパスにする
+			materialData.textureFilePath = directoryPath + "/" + textureFilename;
+		}
+	}
+
+	return materialData;
 }
 
 void Object3d::Initialize(ID3D12Device* device) {
@@ -145,8 +176,8 @@ void Object3d::Reset() {
 void Object3d::CreateModelVertices(ID3D12Device* device) {
 	// OBJファイルから頂点情報を読み込む
 	const ModelData modelData =
-		LoadObjFile("Resources", "plane.obj");
-
+		LoadObjFile("Resources", "axis.obj");
+	textureFilaPath_ = modelData.material.textureFilePath;
 	// 読み込んだ頂点数を保存する
 	vertexCount_ =
 		static_cast<uint32_t>(modelData.vertices.size());

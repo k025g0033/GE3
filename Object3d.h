@@ -9,6 +9,8 @@
 
 ModelData LoadObjFile(const std::string& directoryPath, const std::string& filename);
 
+MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const std::string& filename);
+
 // 3Dオブジェクト1個分の形状・姿勢・マテリアル・描画処理を管理するクラス。
 class Object3d {
 public:
@@ -22,6 +24,9 @@ public:
 
 	Transform& GetTransform() { return transform_; }
 	Material& GetMaterial() { return *materialData_; }
+	const std::string& GetTextureFilePath()const {
+		return textureFilaPath_;
+	}
 
 private:
 	void CreateModelVertices(ID3D12Device* device);
@@ -39,4 +44,6 @@ private:
 	Material* materialData_ = nullptr;
 	Microsoft::WRL::ComPtr<ID3D12Resource> transformationResource_;
 	TransformationMatrix* transformationData_ = nullptr;
+
+	std::string textureFilaPath_;
 };

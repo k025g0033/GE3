@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
 
 // CPU側とシェーダー側で共有する、描画に必要な基本データ型。
 struct Vector2 {
@@ -42,8 +43,13 @@ struct VertexData {
 	Vector3 normal;
 };
 
+struct MaterialData {
+	std::string textureFilePath;
+};
+
 struct ModelData {
 	std::vector<VertexData> vertices;
+	MaterialData material;
 };
 
 struct Material {

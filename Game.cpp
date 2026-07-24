@@ -100,7 +100,7 @@ void Game::Initialize() {
 	state_->uvCheckerTexture =
 		state_->textureManager.Load("Resources/uvChecker.png");
 	state_->monsterBallTexture =
-		state_->textureManager.Load("Resources/monsterBall.png");
+		state_->textureManager.Load(state_->sphere.GetTextureFilePath());
 	state_->dxCommon.ExecuteCommandListAndWait();
 	state_->textureManager.ReleaseUploadResources();
 

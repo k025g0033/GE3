@@ -366,3 +366,4 @@ FodyWeavers.xsd
 /logs
 
 imgui.ini
+!resource/**/*.obj
