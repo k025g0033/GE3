@@ -1,5 +1,11 @@
 #include "Game.h"
 
+#include "Audio.h"
+#include <xaudio2.h>
+#include <fstream>
+
+#pragma comment(lib, "xaudio2.lib")
+
 #include "DirectXCommon.h"
 #include "DirectionalLight.h"
 #include "MathFunctions.h"
@@ -25,8 +31,128 @@
 #pragma comment(lib, "dxcompiler.lib")
 
 namespace {
-constexpr int32_t kClientWidth = 1280;
-constexpr int32_t kClientHeight = 720;
+	constexpr int32_t kClientWidth = 1280;
+	constexpr int32_t kClientHeight = 720;
+
+	// チャンクヘッダ
+	struct ChunkHeader {
+		char id[4];
+		int32_t size;
+	};
+
+	// RIFFヘッダ
+	struct RiffHeader {
+		ChunkHeader chunk;
+		char type[4];
+	};
+
+	// fmtチャンク
+	struct FormatChunk {
+		ChunkHeader chunk;
+		WAVEFORMATEX fmt;
+	};
+
+	// 音声データ
+	struct SoundData {
+		// 波形フォーマット
+		WAVEFORMATEX wfex;
+		// バッファの先頭アドレス
+		BYTE* pBuffer;
+		// バッファのサイズ
+		unsigned int bufferSize;
+	};
+
+	SoundData SoundLoadWave(const char* filename) {
+		// ファイル入力ストリームのインスタンス
+		std::ifstream file;
+		// .wavファイルをバイナリモードで開く
+		file.open(filename, std::ios_base::binary);
+		// ファイルオープン失敗を検出する
+		assert(file.is_open());
+
+		// RIFFヘッダーの読み込み
+		RiffHeader riff;
+		file.read((char*)&riff, sizeof(riff));
+		// ファイルガRIFFかチェック
+		if (strncmp(riff.chunk.id, "RIFF", 4) != 0) {
+			assert(0);
+		}
+		// タイプがWAVEかチェック
+		if (strncmp(riff.type, "WAVE", 4) != 0) {
+			assert(0);
+		}
+		// Formatチャンクの読み込み
+		FormatChunk format = {};
+		// チャンクヘッダーの確認
+		file.read((char*)&format, sizeof(ChunkHeader));
+		if (strncmp(format.chunk.id, "fmt", 4) != 0) {
+			assert(0);
+		}
+		// チャンク本体の読み込み
+		assert(format.chunk.size <= sizeof(format.fmt));
+		file.read((char*)&format.fmt, format.chunk.size);
+		// Dataチャンクの読み込み
+		ChunkHeader data;
+		file.read((char*)&data, sizeof(data));
+		// JUNKチャンクを検出した場合
+		if (strncmp(data.id, "JUNK", 4) == 0) {
+			// 読み取り位置をJUNKチャンクの終わりまで進める
+			file.seekg(data.size, std::ios_base::cur);
+			// 再読み込み
+			file.read((char*)&data, sizeof(data));
+		}
+		if (strncmp(data.id, "data", 4) != 0) {
+			assert(0);
+		}
+		// Dataチャンクのデータ部(波形データ)の読み込み
+		char* pBuffer = new char[data.size];
+		file.read(pBuffer, data.size);
+		// Waveファイルを閉じる
+		file.close();
+
+		// returnする為の音声データ
+		SoundData soundData = {};
+
+		soundData.wfex = format.fmt;
+		soundData.pBuffer = reinterpret_cast<BYTE*>(pBuffer);
+		soundData.bufferSize = data.size;
+
+		return soundData;
+	}
+
+	void SoundUnload(SoundData* soundData) {
+		delete[] soundData->pBuffer;
+		soundData->pBuffer = nullptr;
+		soundData->bufferSize = 0;
+		soundData->wfex = {};
+	}
+
+	void SoundPlayWave(
+		IXAudio2* xAudio2,
+		const SoundData& soundData) {
+
+		HRESULT hr;
+
+		// ソースボイスを生成
+		IXAudio2SourceVoice* sourceVoice = nullptr;
+		hr = xAudio2->CreateSourceVoice(
+			&sourceVoice,
+			&soundData.wfex);
+		assert(SUCCEEDED(hr));
+
+		// 再生する波形データを設定
+		XAUDIO2_BUFFER buffer{};
+		buffer.pAudioData = soundData.pBuffer;
+		buffer.AudioBytes = soundData.bufferSize;
+		buffer.Flags = XAUDIO2_END_OF_STREAM;
+
+		// 波形データを送って再生
+		hr = sourceVoice->SubmitSourceBuffer(&buffer);
+		assert(SUCCEEDED(hr));
+
+		hr = sourceVoice->Start();
+		assert(SUCCEEDED(hr));
+	}
 }
 
 struct Game::State {
@@ -38,6 +164,9 @@ struct Game::State {
 	Object3d sphere;
 	Sprite sprite;
 	DirectionalLight directionalLight;
+
+	Audio audio;
+	Audio::SoundData soundData{};
 
 	TextureManager::TextureHandle uvCheckerTexture = 0;
 	TextureManager::TextureHandle monsterBallTexture = 0;
@@ -87,6 +216,17 @@ void Game::Initialize() {
 	state_->winApp.Initialize(L"CG2", kClientWidth, kClientHeight);
 	state_->dxCommon.Initialize(
 		state_->winApp.GetHwnd(), kClientWidth, kClientHeight);
+
+	// XAudioエンジンのインスタンスを生成
+	state_->audio.Initialize();
+	// マスターボイスを生成
+
+	// 音声データを読み込む
+	state_->soundData =
+		state_->audio.LoadWave("Resources/fanfare.wav");
+
+	// 音声を再生
+	state_->audio.PlayWave(state_->soundData);
 
 	ID3D12Device* device = state_->dxCommon.GetDevice();
 	ID3D12GraphicsCommandList* commandList =
@@ -238,8 +378,8 @@ void Game::Draw() {
 
 	const auto sphereTexture = state_->textureManager.GetGPUHandle(
 		state_->useMonsterBall
-			? state_->monsterBallTexture
-			: state_->uvCheckerTexture);
+		? state_->monsterBallTexture
+		: state_->uvCheckerTexture);
 	state_->sphere.Draw(
 		commandList,
 		sphereTexture,
@@ -264,4 +404,9 @@ void Game::Finalize() {
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 #endif
+	// XAudio2を先に解放
+	state_->audio.Finalize();
+
+	// 音声データを解放
+	state_->audio.Unload(&state_->soundData);
 }
