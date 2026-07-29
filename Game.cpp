@@ -15,6 +15,7 @@
 #include "Sprite.h"
 #include "TextureManager.h"
 #include "WinApp.h"
+#include "DebugCamera.h"
 
 #include <Windows.h>
 #include <cassert>
@@ -169,6 +170,7 @@ struct Game::State {
 	Audio audio;
 	Audio::SoundData soundData{};
 	Input input;
+	DebugCamera debugCamera;
 
 	TextureManager::TextureHandle uvCheckerTexture = 0;
 	TextureManager::TextureHandle monsterBallTexture = 0;
@@ -241,6 +243,7 @@ void Game::Initialize() {
 	state_->sphere.Initialize(device);
 	state_->sprite.Initialize(device);
 	state_->directionalLight.Initialize(device);
+	state_->debugCamera.Initialize();
 
 	state_->uvCheckerTexture =
 		state_->textureManager.Load("Resources/uvChecker.png");
@@ -269,6 +272,7 @@ void Game::Initialize() {
 
 void Game::Update() {
 	state_->input.Update();
+	state_->debugCamera.Update(state_->input);
 
 #ifdef USE_IMGUI
 	ImGui_ImplDX12_NewFrame();
@@ -370,7 +374,10 @@ void Game::Update() {
 		static_cast<float>(kClientWidth) / kClientHeight,
 		0.1f,
 		100.0f);
-	state_->sphere.Update(Multiply(viewMatrix, projectionMatrix));
+	state_->sphere.Update(
+		Multiply(
+			state_->debugCamera.GetViewMatrix(),
+			state_->debugCamera.GetProjectionMatrix()));
 	state_->sprite.Update(
 		static_cast<float>(kClientWidth),
 		static_cast<float>(kClientHeight));

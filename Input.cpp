@@ -32,6 +32,20 @@ void Input::Initialize(HINSTANCE hInstance, HWND hwnd) {
 		hwnd,
 		DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
 	assert(SUCCEEDED(hr));
+
+	hr = directInput_->CreateDevice(
+		GUID_SysMouse,
+		mouse_.GetAddressOf(),
+		nullptr);
+	assert(SUCCEEDED(hr));
+
+	hr = mouse_->SetDataFormat(&c_dfDIMouse2);
+	assert(SUCCEEDED(hr));
+
+	hr = mouse_->SetCooperativeLevel(
+		hwnd,
+		DISCL_FOREGROUND | DISCL_NONEXCLUSIVE);
+	assert(SUCCEEDED(hr));
 }
 
 void Input::Update() {
@@ -49,6 +63,15 @@ void Input::Update() {
 	hr = keyboard_->GetDeviceState(sizeof(key_), key_);
 	if (FAILED(hr)) {
 		std::memset(key_, 0, sizeof(key_));
+	}
+	HRESULT mouseResult = mouse_->Acquire();
+	if (SUCCEEDED(mouseResult)) {
+		mouseResult = mouse_->GetDeviceState(
+			sizeof(DIMOUSESTATE2),
+			&mouseState_);
+	}
+	if (FAILED(mouseResult)) {
+		mouseState_ = {};
 	}
 }
 
