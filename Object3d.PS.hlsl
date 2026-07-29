@@ -10,6 +10,7 @@ struct Material
 {
     float32_t4 color;
     int32_t enableLighting;
+    int32_t lightingMode;
     float32_t4x4 uvTransform;
 };
 
@@ -45,9 +46,17 @@ PixelShaderOutput main(VertexShaderOutput input)
         normalize(-gDirectionalLight.direction)
     );
 
-    // Half Lambert
-        float cosValue =
-        pow(NdotL * 0.5f + 0.5f, 2.0f);
+        float cosValue = 0.0f;
+        if (gMaterial.lightingMode == 0)
+        {
+            // Lambert
+            cosValue = saturate(NdotL);
+        }
+        else
+        {
+            // Half Lambert
+            cosValue = pow(NdotL * 0.5f + 0.5f, 2.0f);
+        }
 
         output.color =
         gMaterial.color *

@@ -122,9 +122,25 @@ MaterialData LoadMaterialTemplateFile(
 	return materialData;
 }
 
-void Object3d::Initialize(ID3D12Device* device) {
-	CreateModelVertices(device);
+void Object3d::Initialize(
+	ID3D12Device* device,
+	const std::string& directoryPath,
+	const std::string& filename) {
+	CreateModelVertices(device, directoryPath, filename);
+	CreateObjectResources(device);
+}
 
+void Object3d::InitializeSphere(
+	ID3D12Device* device,
+	const std::string& textureFilePath,
+	uint32_t subdivision) {
+	assert(subdivision >= 3);
+	CreateSphereVertices(device, subdivision);
+	textureFilaPath_ = textureFilePath;
+	CreateObjectResources(device);
+}
+
+void Object3d::CreateObjectResources(ID3D12Device* device) {
 	materialResource_ = CreateBuffer(device, sizeof(Material));
 	HRESULT hr = materialResource_->Map(
 		0, nullptr, reinterpret_cast<void**>(&materialData_));
@@ -163,20 +179,24 @@ void Object3d::Draw(
 void Object3d::Reset() {
 	transform_ = {
 		{0.5f, 0.5f, 0.5f},
-		{0.0f, 0.0f, 0.0f},
+		{0.0f, 3.14159265f, 0.0f},
 		{0.0f, 0.0f, 0.0f},
 	};
 	materialData_->color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	materialData_->enableLighting = true;
+	materialData_->lightingMode = 1;
 	materialData_->uvTransform = MakeIdentity4x4();
 	transformationData_->WVP = MakeIdentity4x4();
 	transformationData_->World = MakeIdentity4x4();
 }
 
-void Object3d::CreateModelVertices(ID3D12Device* device) {
+void Object3d::CreateModelVertices(
+	ID3D12Device* device,
+	const std::string& directoryPath,
+	const std::string& filename) {
 	// OBJファイルから頂点情報を読み込む
 	const ModelData modelData =
-		LoadObjFile("Resources", "axis.obj");
+		LoadObjFile(directoryPath, filename);
 	textureFilaPath_ = modelData.material.textureFilePath;
 	// 読み込んだ頂点数を保存する
 	vertexCount_ =
@@ -213,6 +233,90 @@ void Object3d::CreateModelVertices(ID3D12Device* device) {
 		vertexData,
 		modelData.vertices.data(),
 		vertexBufferSize);
+}
+
+void Object3d::CreateSphereVertices(
+	ID3D12Device* device,
+	uint32_t subdivision) {
+	constexpr float pi = 3.14159265358979323846f;
+	const float latitudeStep = pi / static_cast<float>(subdivision);
+	const float longitudeStep =
+		2.0f * pi / static_cast<float>(subdivision);
+
+	std::vector<VertexData> vertices;
+	vertices.reserve(
+		static_cast<size_t>(subdivision) * subdivision * 6);
+
+	auto makeVertex = [](float latitude, float longitude,
+		float u, float v) {
+		const Vector4 position{
+			std::cos(latitude) * std::cos(longitude),
+			std::sin(latitude),
+			std::cos(latitude) * std::sin(longitude),
+			1.0f,
+		};
+		return VertexData{
+			position,
+			{u, v},
+			{position.x, position.y, position.z},
+		};
+	};
+
+	for (uint32_t latitudeIndex = 0;
+		latitudeIndex < subdivision;
+		++latitudeIndex) {
+		const float latitude =
+			-pi / 2.0f + latitudeStep * latitudeIndex;
+		const float nextLatitude = latitude + latitudeStep;
+		const float v =
+			1.0f - static_cast<float>(latitudeIndex) / subdivision;
+		const float nextV =
+			1.0f - static_cast<float>(latitudeIndex + 1) / subdivision;
+
+		for (uint32_t longitudeIndex = 0;
+			longitudeIndex < subdivision;
+			++longitudeIndex) {
+			const float longitude =
+				longitudeStep * longitudeIndex;
+			const float nextLongitude = longitude + longitudeStep;
+			const float u =
+				static_cast<float>(longitudeIndex) / subdivision;
+			const float nextU =
+				static_cast<float>(longitudeIndex + 1) / subdivision;
+
+			const VertexData lowerLeft =
+				makeVertex(latitude, longitude, u, v);
+			const VertexData upperLeft =
+				makeVertex(nextLatitude, longitude, u, nextV);
+			const VertexData lowerRight =
+				makeVertex(latitude, nextLongitude, nextU, v);
+			const VertexData upperRight =
+				makeVertex(nextLatitude, nextLongitude, nextU, nextV);
+
+			vertices.push_back(lowerLeft);
+			vertices.push_back(upperLeft);
+			vertices.push_back(lowerRight);
+			vertices.push_back(lowerRight);
+			vertices.push_back(upperLeft);
+			vertices.push_back(upperRight);
+		}
+	}
+
+	vertexCount_ = static_cast<uint32_t>(vertices.size());
+	const size_t vertexBufferSize =
+		sizeof(VertexData) * vertices.size();
+	vertexResource_ = CreateBuffer(device, vertexBufferSize);
+	vertexBufferView_.BufferLocation =
+		vertexResource_->GetGPUVirtualAddress();
+	vertexBufferView_.SizeInBytes =
+		static_cast<UINT>(vertexBufferSize);
+	vertexBufferView_.StrideInBytes = sizeof(VertexData);
+
+	VertexData* vertexData = nullptr;
+	const HRESULT hr = vertexResource_->Map(
+		0, nullptr, reinterpret_cast<void**>(&vertexData));
+	assert(SUCCEEDED(hr));
+	std::memcpy(vertexData, vertices.data(), vertexBufferSize);
 }
 
 Microsoft::WRL::ComPtr<ID3D12Resource> Object3d::CreateBuffer(

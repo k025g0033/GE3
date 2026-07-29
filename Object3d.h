@@ -14,7 +14,14 @@ MaterialData LoadMaterialTemplateFile(const std::string& directoryPath, const st
 // 3Dオブジェクト1個分の形状・姿勢・マテリアル・描画処理を管理するクラス。
 class Object3d {
 public:
-	void Initialize(ID3D12Device* device);
+	void Initialize(
+		ID3D12Device* device,
+		const std::string& directoryPath,
+		const std::string& filename);
+	void InitializeSphere(
+		ID3D12Device* device,
+		const std::string& textureFilePath,
+		uint32_t subdivision = 16);
 	void Update(const Matrix4x4& viewProjectionMatrix);
 	void Draw(
 		ID3D12GraphicsCommandList* commandList,
@@ -29,7 +36,14 @@ public:
 	}
 
 private:
-	void CreateModelVertices(ID3D12Device* device);
+	void CreateModelVertices(
+		ID3D12Device* device,
+		const std::string& directoryPath,
+		const std::string& filename);
+	void CreateSphereVertices(
+		ID3D12Device* device,
+		uint32_t subdivision);
+	void CreateObjectResources(ID3D12Device* device);
 
 	Microsoft::WRL::ComPtr<ID3D12Resource> CreateBuffer(
 		ID3D12Device* device,

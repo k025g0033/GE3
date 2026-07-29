@@ -164,6 +164,8 @@ struct Game::State {
 	Object3dCommon object3dCommon;
 	TextureManager textureManager;
 	Object3d sphere;
+	Object3d multiMesh;
+	Object3d ball;
 	Sprite sprite;
 	DirectionalLight directionalLight;
 
@@ -174,6 +176,8 @@ struct Game::State {
 
 	TextureManager::TextureHandle uvCheckerTexture = 0;
 	TextureManager::TextureHandle monsterBallTexture = 0;
+	TextureManager::TextureHandle multiMeshTexture = 0;
+	TextureManager::TextureHandle ballTexture = 0;
 	Transform cameraTransform{
 		{1.0f, 1.0f, 1.0f},
 		{0.0f, 0.0f, 0.0f},
@@ -238,7 +242,9 @@ void Game::Initialize() {
 		state_->dxCommon.GetCommandList();
 	state_->object3dCommon.Initialize(device);
 	state_->textureManager.Initialize(device, commandList);
-	state_->sphere.Initialize(device);
+	state_->sphere.Initialize(device, "Resources", "plane.obj");
+	state_->multiMesh.Initialize(device, "Resources", "multiMesh.obj");
+	state_->ball.InitializeSphere(device, "Resources/uvChecker.png", 16);
 	state_->sprite.Initialize(device);
 	state_->directionalLight.Initialize(device);
 	state_->debugCamera.Initialize();
@@ -247,6 +253,15 @@ void Game::Initialize() {
 		state_->textureManager.Load("Resources/uvChecker.png");
 	state_->monsterBallTexture =
 		state_->textureManager.Load(state_->sphere.GetTextureFilePath());
+	state_->multiMeshTexture =
+		state_->textureManager.Load(state_->multiMesh.GetTextureFilePath());
+	state_->ballTexture =
+		state_->textureManager.Load(state_->ball.GetTextureFilePath());
+	state_->sphere.GetTransform().translate.x = -1.5f;
+	state_->multiMesh.GetTransform().scale = {0.35f, 0.35f, 0.35f};
+	state_->multiMesh.GetTransform().translate = {0.5f, -0.5f, 0.0f};
+	state_->ball.GetTransform().scale = {0.65f, 0.65f, 0.65f};
+	state_->ball.GetTransform().translate = {0.0f, -1.5f, 0.0f};
 	state_->dxCommon.ExecuteCommandListAndWait();
 	state_->textureManager.ReleaseUploadResources();
 
@@ -287,28 +302,109 @@ void Game::Update() {
 	}
 
 	if (ImGui::CollapsingHeader(
-		"Sphere", ImGuiTreeNodeFlags_DefaultOpen)) {
+		"Object", ImGuiTreeNodeFlags_DefaultOpen)) {
 		ImGui::DragFloat3(
-			"Translate##Sphere",
+			"Translate##Object",
 			&state_->sphere.GetTransform().translate.x,
 			0.01f);
 		ImGui::DragFloat3(
-			"Rotate##Sphere",
+			"Rotate##Object",
 			&state_->sphere.GetTransform().rotate.x,
 			0.01f);
 		ImGui::DragFloat3(
-			"Scale##Sphere",
+			"Scale##Object",
 			&state_->sphere.GetTransform().scale.x,
 			0.01f);
 		ImGui::ColorEdit4(
-			"Color##Sphere",
+			"Color##Object",
 			&state_->sphere.GetMaterial().color.x);
 		bool lighting =
 			state_->sphere.GetMaterial().enableLighting != 0;
-		if (ImGui::Checkbox("Enable Lighting##Sphere", &lighting)) {
+		if (ImGui::Checkbox("Enable Lighting##Object", &lighting)) {
 			state_->sphere.GetMaterial().enableLighting = lighting ? 1 : 0;
 		}
+		const char* lightingModes[] = {
+			"Lambert",
+			"Half Lambert",
+		};
+		ImGui::Combo(
+			"Lighting Mode##Object",
+			&state_->sphere.GetMaterial().lightingMode,
+			lightingModes,
+			IM_ARRAYSIZE(lightingModes));
 		ImGui::Checkbox("Use Monster Ball", &state_->useMonsterBall);
+	}
+
+	ImGui::Separator();
+	if (ImGui::CollapsingHeader(
+		"MultiMesh Object", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::DragFloat3(
+			"Translate##MultiMesh",
+			&state_->multiMesh.GetTransform().translate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Rotate##MultiMesh",
+			&state_->multiMesh.GetTransform().rotate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Scale##MultiMesh",
+			&state_->multiMesh.GetTransform().scale.x,
+			0.01f);
+		ImGui::ColorEdit4(
+			"Color##MultiMesh",
+			&state_->multiMesh.GetMaterial().color.x);
+		bool multiMeshLighting =
+			state_->multiMesh.GetMaterial().enableLighting != 0;
+		if (ImGui::Checkbox(
+			"Enable Lighting##MultiMesh", &multiMeshLighting)) {
+			state_->multiMesh.GetMaterial().enableLighting =
+				multiMeshLighting ? 1 : 0;
+		}
+		const char* multiMeshLightingModes[] = {
+			"Lambert",
+			"Half Lambert",
+		};
+		ImGui::Combo(
+			"Lighting Mode##MultiMesh",
+			&state_->multiMesh.GetMaterial().lightingMode,
+			multiMeshLightingModes,
+			IM_ARRAYSIZE(multiMeshLightingModes));
+	}
+
+	ImGui::Separator();
+	if (ImGui::CollapsingHeader(
+		"Sphere", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::DragFloat3(
+			"Translate##Ball",
+			&state_->ball.GetTransform().translate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Rotate##Ball",
+			&state_->ball.GetTransform().rotate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Scale##Ball",
+			&state_->ball.GetTransform().scale.x,
+			0.01f);
+		ImGui::ColorEdit4(
+			"Color##Ball",
+			&state_->ball.GetMaterial().color.x);
+		bool ballLighting =
+			state_->ball.GetMaterial().enableLighting != 0;
+		if (ImGui::Checkbox(
+			"Enable Lighting##Ball", &ballLighting)) {
+			state_->ball.GetMaterial().enableLighting =
+				ballLighting ? 1 : 0;
+		}
+		const char* ballLightingModes[] = {
+			"Lambert",
+			"Half Lambert",
+		};
+		ImGui::Combo(
+			"Lighting Mode##Ball",
+			&state_->ball.GetMaterial().lightingMode,
+			ballLightingModes,
+			IM_ARRAYSIZE(ballLightingModes));
 	}
 
 	ImGui::Separator();
@@ -317,6 +413,14 @@ void Game::Update() {
 			"Translate##Sprite",
 			&state_->sprite.GetTransform().translate.x,
 			1.0f);
+		ImGui::DragFloat3(
+			"Rotate##Sprite",
+			&state_->sprite.GetTransform().rotate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Scale##Sprite",
+			&state_->sprite.GetTransform().scale.x,
+			0.01f);
 		ImGui::ColorEdit4(
 			"Color##Sprite",
 			&state_->sprite.GetMaterial().color.x);
@@ -364,6 +468,17 @@ void Game::Update() {
 
 	if (ImGui::Button("Reset")) {
 		state_->sphere.Reset();
+		state_->multiMesh.Reset();
+		state_->ball.Reset();
+		state_->sphere.GetTransform().translate.x = -1.5f;
+		state_->multiMesh.GetTransform().scale =
+			{0.35f, 0.35f, 0.35f};
+		state_->multiMesh.GetTransform().translate =
+			{0.5f, -0.5f, 0.0f};
+		state_->ball.GetTransform().scale =
+			{0.65f, 0.65f, 0.65f};
+		state_->ball.GetTransform().translate =
+			{0.0f, -1.5f, 0.0f};
 		state_->sprite.Reset();
 		state_->directionalLight.Reset();
 	}
@@ -387,6 +502,8 @@ void Game::Update() {
 			state_->debugCamera.GetProjectionMatrix())
 		: Multiply(viewMatrix, projectionMatrix);
 	state_->sphere.Update(viewProjectionMatrix);
+	state_->multiMesh.Update(viewProjectionMatrix);
+	state_->ball.Update(viewProjectionMatrix);
 	state_->sprite.Update(
 		static_cast<float>(kClientWidth),
 		static_cast<float>(kClientHeight));
@@ -406,6 +523,14 @@ void Game::Draw() {
 	state_->sphere.Draw(
 		commandList,
 		sphereTexture,
+		state_->directionalLight.GetGPUVirtualAddress());
+	state_->multiMesh.Draw(
+		commandList,
+		state_->textureManager.GetGPUHandle(state_->multiMeshTexture),
+		state_->directionalLight.GetGPUVirtualAddress());
+	state_->ball.Draw(
+		commandList,
+		state_->textureManager.GetGPUHandle(state_->ballTexture),
 		state_->directionalLight.GetGPUVirtualAddress());
 	state_->sprite.Draw(
 		commandList,

@@ -102,6 +102,7 @@ void Sprite::Reset() {
 	};
 	materialData_->color = { 1.0f, 1.0f, 1.0f, 1.0f };
 	materialData_->enableLighting = false;
+	materialData_->lightingMode = 0;
 	materialData_->uvTransform = MakeIdentity4x4();
 	transformationData_->WVP = MakeIdentity4x4();
 	transformationData_->World = MakeIdentity4x4();
