@@ -165,6 +165,7 @@ struct Game::State {
 	TextureManager textureManager;
 	Object3d sphere;
 	Object3d multiMesh;
+	Object3d multiMaterial;
 	Object3d ball;
 	Sprite sprite;
 	DirectionalLight directionalLight;
@@ -178,6 +179,7 @@ struct Game::State {
 	TextureManager::TextureHandle monsterBallTexture = 0;
 	TextureManager::TextureHandle multiMeshTexture = 0;
 	TextureManager::TextureHandle ballTexture = 0;
+	std::vector<TextureManager::TextureHandle> multiMaterialTextures;
 	Transform cameraTransform{
 		{1.0f, 1.0f, 1.0f},
 		{0.0f, 0.0f, 0.0f},
@@ -244,6 +246,8 @@ void Game::Initialize() {
 	state_->textureManager.Initialize(device, commandList);
 	state_->sphere.Initialize(device, "Resources", "plane.obj");
 	state_->multiMesh.Initialize(device, "Resources", "multiMesh.obj");
+	state_->multiMaterial.Initialize(
+		device, "Resources", "multiMaterial.obj");
 	state_->ball.InitializeSphere(device, "Resources/uvChecker.png", 16);
 	state_->sprite.Initialize(device);
 	state_->directionalLight.Initialize(device);
@@ -257,11 +261,20 @@ void Game::Initialize() {
 		state_->textureManager.Load(state_->multiMesh.GetTextureFilePath());
 	state_->ballTexture =
 		state_->textureManager.Load(state_->ball.GetTextureFilePath());
+	for (const std::string& texturePath :
+		state_->multiMaterial.GetTextureFilePaths()) {
+		state_->multiMaterialTextures.push_back(
+			state_->textureManager.Load(texturePath));
+	}
 	state_->sphere.GetTransform().translate.x = -1.5f;
 	state_->multiMesh.GetTransform().scale = {0.35f, 0.35f, 0.35f};
 	state_->multiMesh.GetTransform().translate = {0.5f, -0.5f, 0.0f};
 	state_->ball.GetTransform().scale = {0.65f, 0.65f, 0.65f};
 	state_->ball.GetTransform().translate = {0.0f, -1.5f, 0.0f};
+	state_->multiMaterial.GetTransform().scale =
+		{0.3f, 0.3f, 0.3f};
+	state_->multiMaterial.GetTransform().translate =
+		{2.0f, -0.5f, 0.0f};
 	state_->dxCommon.ExecuteCommandListAndWait();
 	state_->textureManager.ReleaseUploadResources();
 
@@ -372,6 +385,25 @@ void Game::Update() {
 	}
 
 	ImGui::Separator();
+	if (ImGui::CollapsingHeader("MultiMaterial Object")) {
+		ImGui::Text("Materials: %d",
+			static_cast<int>(
+				state_->multiMaterial.GetTextureFilePaths().size()));
+		ImGui::DragFloat3(
+			"Translate##MultiMaterial",
+			&state_->multiMaterial.GetTransform().translate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Rotate##MultiMaterial",
+			&state_->multiMaterial.GetTransform().rotate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Scale##MultiMaterial",
+			&state_->multiMaterial.GetTransform().scale.x,
+			0.01f);
+	}
+
+	ImGui::Separator();
 	if (ImGui::CollapsingHeader(
 		"Sphere", ImGuiTreeNodeFlags_DefaultOpen)) {
 		ImGui::DragFloat3(
@@ -469,6 +501,7 @@ void Game::Update() {
 	if (ImGui::Button("Reset")) {
 		state_->sphere.Reset();
 		state_->multiMesh.Reset();
+		state_->multiMaterial.Reset();
 		state_->ball.Reset();
 		state_->sphere.GetTransform().translate.x = -1.5f;
 		state_->multiMesh.GetTransform().scale =
@@ -479,6 +512,10 @@ void Game::Update() {
 			{0.65f, 0.65f, 0.65f};
 		state_->ball.GetTransform().translate =
 			{0.0f, -1.5f, 0.0f};
+		state_->multiMaterial.GetTransform().scale =
+			{0.3f, 0.3f, 0.3f};
+		state_->multiMaterial.GetTransform().translate =
+			{2.0f, -0.5f, 0.0f};
 		state_->sprite.Reset();
 		state_->directionalLight.Reset();
 	}
@@ -503,6 +540,7 @@ void Game::Update() {
 		: Multiply(viewMatrix, projectionMatrix);
 	state_->sphere.Update(viewProjectionMatrix);
 	state_->multiMesh.Update(viewProjectionMatrix);
+	state_->multiMaterial.Update(viewProjectionMatrix);
 	state_->ball.Update(viewProjectionMatrix);
 	state_->sprite.Update(
 		static_cast<float>(kClientWidth),
@@ -527,6 +565,15 @@ void Game::Draw() {
 	state_->multiMesh.Draw(
 		commandList,
 		state_->textureManager.GetGPUHandle(state_->multiMeshTexture),
+		state_->directionalLight.GetGPUVirtualAddress());
+	std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> multiMaterialHandles;
+	for (const auto textureHandle : state_->multiMaterialTextures) {
+		multiMaterialHandles.push_back(
+			state_->textureManager.GetGPUHandle(textureHandle));
+	}
+	state_->multiMaterial.Draw(
+		commandList,
+		multiMaterialHandles,
 		state_->directionalLight.GetGPUVirtualAddress());
 	state_->ball.Draw(
 		commandList,

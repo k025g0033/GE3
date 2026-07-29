@@ -27,12 +27,19 @@ public:
 		ID3D12GraphicsCommandList* commandList,
 		D3D12_GPU_DESCRIPTOR_HANDLE textureHandle,
 		D3D12_GPU_VIRTUAL_ADDRESS lightAddress) const;
+	void Draw(
+		ID3D12GraphicsCommandList* commandList,
+		const std::vector<D3D12_GPU_DESCRIPTOR_HANDLE>& textureHandles,
+		D3D12_GPU_VIRTUAL_ADDRESS lightAddress) const;
 	void Reset();
 
 	Transform& GetTransform() { return transform_; }
 	Material& GetMaterial() { return *materialData_; }
 	const std::string& GetTextureFilePath()const {
 		return textureFilaPath_;
+	}
+	const std::vector<std::string>& GetTextureFilePaths() const {
+		return textureFilePaths_;
 	}
 
 private:
@@ -60,4 +67,6 @@ private:
 	TransformationMatrix* transformationData_ = nullptr;
 
 	std::string textureFilaPath_;
+	std::vector<std::string> textureFilePaths_;
+	std::vector<SubMeshData> subMeshes_;
 };

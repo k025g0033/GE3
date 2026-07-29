@@ -44,12 +44,20 @@ struct VertexData {
 };
 
 struct MaterialData {
+	std::string name;
 	std::string textureFilePath;
+};
+
+struct SubMeshData {
+	uint32_t vertexStart;
+	uint32_t vertexCount;
+	MaterialData material;
 };
 
 struct ModelData {
 	std::vector<VertexData> vertices;
 	MaterialData material;
+	std::vector<SubMeshData> subMeshes;
 };
 
 struct Material {

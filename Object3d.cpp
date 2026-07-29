@@ -7,8 +7,41 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <cstring>
+
+namespace {
+std::unordered_map<std::string, MaterialData> LoadMaterialTemplateFiles(
+	const std::string& directoryPath,
+	const std::string& filename) {
+	std::unordered_map<std::string, MaterialData> materials;
+	std::ifstream file(directoryPath + "/" + filename);
+	assert(file.is_open());
+
+	MaterialData* currentMaterial = nullptr;
+	std::string line;
+	while (std::getline(file, line)) {
+		std::string identifier;
+		std::istringstream s(line);
+		s >> identifier;
+
+		if (identifier == "newmtl") {
+			std::string materialName;
+			s >> materialName;
+			MaterialData& material = materials[materialName];
+			material.name = materialName;
+			currentMaterial = &material;
+		} else if (identifier == "map_Kd" && currentMaterial) {
+			std::string textureFilename;
+			s >> textureFilename;
+			currentMaterial->textureFilePath =
+				directoryPath + "/" + textureFilename;
+		}
+	}
+	return materials;
+}
+}
 
 ModelData LoadObjFile(
 	const std::string& directoryPath,
@@ -18,6 +51,8 @@ ModelData LoadObjFile(
 	std::vector<Vector4> positions;
 	std::vector<Vector3> normals;
 	std::vector<Vector2> texcoords;
+	std::unordered_map<std::string, MaterialData> materials;
+	std::string currentMaterialName;
 	std::string line;
 
 	std::ifstream file(directoryPath + "/" + filename);
@@ -48,6 +83,20 @@ ModelData LoadObjFile(
 			normals.push_back(normal);
 
 		} else if (identifier == "f") {
+			if (modelData.subMeshes.empty() ||
+				modelData.subMeshes.back().material.name !=
+					currentMaterialName) {
+				SubMeshData subMesh{};
+				subMesh.vertexStart =
+					static_cast<uint32_t>(modelData.vertices.size());
+				auto materialIt = materials.find(currentMaterialName);
+				if (materialIt != materials.end()) {
+					subMesh.material = materialIt->second;
+				} else {
+					subMesh.material.name = currentMaterialName;
+				}
+				modelData.subMeshes.push_back(subMesh);
+			}
 			VertexData triangle[3];
 			for (uint32_t faceVertex = 0;
 				faceVertex < 3;
@@ -85,15 +134,22 @@ ModelData LoadObjFile(
 			modelData.vertices.push_back(triangle[2]);
 			modelData.vertices.push_back(triangle[1]);
 			modelData.vertices.push_back(triangle[0]);
+			modelData.subMeshes.back().vertexCount += 3;
 		} else if (identifier == "mtllib") {
 			// materialTemplateLibraryファイルの名前を取得する
 			std::string materialFilename;
 			s >> materialFilename;
 			// 基本的にobjファイルと同一階層にmtlは存在させるので、ディレクトリ名とファイル名を渡す
-			modelData.material = LoadMaterialTemplateFile(directoryPath, materialFilename);
+			materials =
+				LoadMaterialTemplateFiles(directoryPath, materialFilename);
+		} else if (identifier == "usemtl") {
+			s >> currentMaterialName;
 		}
 	}
 
+	if (!modelData.subMeshes.empty()) {
+		modelData.material = modelData.subMeshes.front().material;
+	}
 	return modelData;
 }
 
@@ -176,6 +232,29 @@ void Object3d::Draw(
 	commandList->DrawInstanced(vertexCount_, 1, 0, 0);
 }
 
+void Object3d::Draw(
+	ID3D12GraphicsCommandList* commandList,
+	const std::vector<D3D12_GPU_DESCRIPTOR_HANDLE>& textureHandles,
+	D3D12_GPU_VIRTUAL_ADDRESS lightAddress) const {
+	assert(textureHandles.size() == subMeshes_.size());
+	commandList->SetGraphicsRootConstantBufferView(
+		0, materialResource_->GetGPUVirtualAddress());
+	commandList->SetGraphicsRootConstantBufferView(3, lightAddress);
+	commandList->IASetVertexBuffers(0, 1, &vertexBufferView_);
+	commandList->SetGraphicsRootConstantBufferView(
+		1, transformationResource_->GetGPUVirtualAddress());
+
+	for (size_t index = 0; index < subMeshes_.size(); ++index) {
+		commandList->SetGraphicsRootDescriptorTable(
+			2, textureHandles[index]);
+		commandList->DrawInstanced(
+			subMeshes_[index].vertexCount,
+			1,
+			subMeshes_[index].vertexStart,
+			0);
+	}
+}
+
 void Object3d::Reset() {
 	transform_ = {
 		{0.5f, 0.5f, 0.5f},
@@ -198,6 +277,12 @@ void Object3d::CreateModelVertices(
 	const ModelData modelData =
 		LoadObjFile(directoryPath, filename);
 	textureFilaPath_ = modelData.material.textureFilePath;
+	subMeshes_ = modelData.subMeshes;
+	textureFilePaths_.clear();
+	for (const SubMeshData& subMesh : subMeshes_) {
+		textureFilePaths_.push_back(
+			subMesh.material.textureFilePath);
+	}
 	// 読み込んだ頂点数を保存する
 	vertexCount_ =
 		static_cast<uint32_t>(modelData.vertices.size());
