@@ -179,6 +179,7 @@ struct Game::State {
 		{0.0f, 0.0f, 0.0f},
 		{0.0f, 0.0f, -5.0f},
 	};
+	bool useDebugCamera = true;
 	bool useMonsterBall = false;
 };
 
@@ -232,9 +233,6 @@ void Game::Initialize() {
 	state_->soundData =
 		state_->audio.LoadWave("Resources/fanfare.wav");
 
-	// 音声を再生
-	state_->audio.PlayWave(state_->soundData);
-
 	ID3D12Device* device = state_->dxCommon.GetDevice();
 	ID3D12GraphicsCommandList* commandList =
 		state_->dxCommon.GetCommandList();
@@ -279,6 +277,14 @@ void Game::Update() {
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
 	ImGui::Begin("Settings");
+
+	ImGui::Checkbox(
+		"Use Debug Camera",
+		&state_->useDebugCamera);
+
+	if (ImGui::Button("Play Sound")) {
+		state_->audio.PlayWave(state_->soundData);
+	}
 
 	if (ImGui::CollapsingHeader(
 		"Sphere", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -374,10 +380,13 @@ void Game::Update() {
 		static_cast<float>(kClientWidth) / kClientHeight,
 		0.1f,
 		100.0f);
-	state_->sphere.Update(
-		Multiply(
+	const Matrix4x4 viewProjectionMatrix =
+		state_->useDebugCamera
+		? Multiply(
 			state_->debugCamera.GetViewMatrix(),
-			state_->debugCamera.GetProjectionMatrix()));
+			state_->debugCamera.GetProjectionMatrix())
+		: Multiply(viewMatrix, projectionMatrix);
+	state_->sphere.Update(viewProjectionMatrix);
 	state_->sprite.Update(
 		static_cast<float>(kClientWidth),
 		static_cast<float>(kClientHeight));
