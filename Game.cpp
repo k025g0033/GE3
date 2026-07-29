@@ -1,6 +1,7 @@
 #include "Game.h"
 
 #include "Audio.h"
+#include "Input.h"
 #include <xaudio2.h>
 #include <fstream>
 
@@ -167,6 +168,7 @@ struct Game::State {
 
 	Audio audio;
 	Audio::SoundData soundData{};
+	Input input;
 
 	TextureManager::TextureHandle uvCheckerTexture = 0;
 	TextureManager::TextureHandle monsterBallTexture = 0;
@@ -214,6 +216,9 @@ void Game::Initialize() {
 
 	state_ = std::make_unique<State>();
 	state_->winApp.Initialize(L"CG2", kClientWidth, kClientHeight);
+	state_->input.Initialize(
+		GetModuleHandle(nullptr),
+		state_->winApp.GetHwnd());
 	state_->dxCommon.Initialize(
 		state_->winApp.GetHwnd(), kClientWidth, kClientHeight);
 
@@ -263,6 +268,8 @@ void Game::Initialize() {
 }
 
 void Game::Update() {
+	state_->input.Update();
+
 #ifdef USE_IMGUI
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
