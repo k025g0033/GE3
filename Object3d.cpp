@@ -106,7 +106,7 @@ ModelData LoadObjFile(
 				s >> vertexDefinition;
 
 				std::istringstream v(vertexDefinition);
-				uint32_t elementIndices[3];
+				uint32_t elementIndices[3]{};
 
 				for (uint32_t element = 0;
 					element < 3;
@@ -114,15 +114,22 @@ ModelData LoadObjFile(
 
 					std::string index;
 					std::getline(v, index, '/');
-					elementIndices[element] = std::stoi(index);
+					if (!index.empty()) {
+						elementIndices[element] =
+							static_cast<uint32_t>(std::stoi(index));
+					}
 				}
 
 				const Vector4 position =
 					positions[elementIndices[0] - 1];
 				const Vector2 texcoord =
-					texcoords[elementIndices[1] - 1];
+					elementIndices[1] > 0
+					? texcoords[elementIndices[1] - 1]
+					: Vector2{0.0f, 0.0f};
 				const Vector3 normal =
-					normals[elementIndices[2] - 1];
+					elementIndices[2] > 0
+					? normals[elementIndices[2] - 1]
+					: Vector3{0.0f, 1.0f, 0.0f};
 
 				triangle[faceVertex] = {
 					position,

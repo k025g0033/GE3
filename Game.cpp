@@ -166,6 +166,7 @@ struct Game::State {
 	Object3d sphere;
 	Object3d multiMesh;
 	Object3d multiMaterial;
+	Object3d suzanne;
 	Object3d ball;
 	Sprite sprite;
 	DirectionalLight directionalLight;
@@ -187,6 +188,13 @@ struct Game::State {
 	};
 	bool useDebugCamera = true;
 	bool useMonsterBall = false;
+	bool showPlane = true;
+	bool showMultiMesh = false;
+	bool showMultiMaterial = false;
+	bool showSuzanne = false;
+	bool showSphere = false;
+	bool showSprite = true;
+	bool showImGuiDemo = false;
 };
 
 Game::Game() = default;
@@ -248,6 +256,7 @@ void Game::Initialize() {
 	state_->multiMesh.Initialize(device, "Resources", "multiMesh.obj");
 	state_->multiMaterial.Initialize(
 		device, "Resources", "multiMaterial.obj");
+	state_->suzanne.Initialize(device, "Resources", "suzanne.obj");
 	state_->ball.InitializeSphere(device, "Resources/uvChecker.png", 16);
 	state_->sprite.Initialize(device);
 	state_->directionalLight.Initialize(device);
@@ -275,6 +284,10 @@ void Game::Initialize() {
 		{0.3f, 0.3f, 0.3f};
 	state_->multiMaterial.GetTransform().translate =
 		{2.0f, -0.5f, 0.0f};
+	state_->suzanne.GetTransform().scale =
+		{0.65f, 0.65f, 0.65f};
+	state_->suzanne.GetTransform().translate =
+		{-2.2f, -1.5f, 0.0f};
 	state_->dxCommon.ExecuteCommandListAndWait();
 	state_->textureManager.ReleaseUploadResources();
 
@@ -309,6 +322,18 @@ void Game::Update() {
 	ImGui::Checkbox(
 		"Use Debug Camera",
 		&state_->useDebugCamera);
+
+	if (ImGui::CollapsingHeader(
+		"Display", ImGuiTreeNodeFlags_DefaultOpen)) {
+		ImGui::Checkbox("Plane", &state_->showPlane);
+		ImGui::Checkbox("MultiMesh", &state_->showMultiMesh);
+		ImGui::Checkbox(
+			"MultiMaterial", &state_->showMultiMaterial);
+		ImGui::Checkbox("Suzanne", &state_->showSuzanne);
+		ImGui::Checkbox("Sphere", &state_->showSphere);
+		ImGui::Checkbox("Sprite", &state_->showSprite);
+		ImGui::Checkbox("ImGui Demo", &state_->showImGuiDemo);
+	}
 
 	if (ImGui::Button("Play Sound")) {
 		state_->audio.PlayWave(state_->soundData);
@@ -401,6 +426,32 @@ void Game::Update() {
 			"Scale##MultiMaterial",
 			&state_->multiMaterial.GetTransform().scale.x,
 			0.01f);
+	}
+
+	ImGui::Separator();
+	if (ImGui::CollapsingHeader("Suzanne")) {
+		ImGui::DragFloat3(
+			"Translate##Suzanne",
+			&state_->suzanne.GetTransform().translate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Rotate##Suzanne",
+			&state_->suzanne.GetTransform().rotate.x,
+			0.01f);
+		ImGui::DragFloat3(
+			"Scale##Suzanne",
+			&state_->suzanne.GetTransform().scale.x,
+			0.01f);
+		ImGui::ColorEdit4(
+			"Color##Suzanne",
+			&state_->suzanne.GetMaterial().color.x);
+		bool suzanneLighting =
+			state_->suzanne.GetMaterial().enableLighting != 0;
+		if (ImGui::Checkbox(
+			"Enable Lighting##Suzanne", &suzanneLighting)) {
+			state_->suzanne.GetMaterial().enableLighting =
+				suzanneLighting ? 1 : 0;
+		}
 	}
 
 	ImGui::Separator();
@@ -502,6 +553,7 @@ void Game::Update() {
 		state_->sphere.Reset();
 		state_->multiMesh.Reset();
 		state_->multiMaterial.Reset();
+		state_->suzanne.Reset();
 		state_->ball.Reset();
 		state_->sphere.GetTransform().translate.x = -1.5f;
 		state_->multiMesh.GetTransform().scale =
@@ -516,6 +568,10 @@ void Game::Update() {
 			{0.3f, 0.3f, 0.3f};
 		state_->multiMaterial.GetTransform().translate =
 			{2.0f, -0.5f, 0.0f};
+		state_->suzanne.GetTransform().scale =
+			{0.65f, 0.65f, 0.65f};
+		state_->suzanne.GetTransform().translate =
+			{-2.2f, -1.5f, 0.0f};
 		state_->sprite.Reset();
 		state_->directionalLight.Reset();
 	}
@@ -541,6 +597,7 @@ void Game::Update() {
 	state_->sphere.Update(viewProjectionMatrix);
 	state_->multiMesh.Update(viewProjectionMatrix);
 	state_->multiMaterial.Update(viewProjectionMatrix);
+	state_->suzanne.Update(viewProjectionMatrix);
 	state_->ball.Update(viewProjectionMatrix);
 	state_->sprite.Update(
 		static_cast<float>(kClientWidth),
@@ -558,33 +615,54 @@ void Game::Draw() {
 		state_->useMonsterBall
 		? state_->monsterBallTexture
 		: state_->uvCheckerTexture);
-	state_->sphere.Draw(
-		commandList,
-		sphereTexture,
-		state_->directionalLight.GetGPUVirtualAddress());
-	state_->multiMesh.Draw(
-		commandList,
-		state_->textureManager.GetGPUHandle(state_->multiMeshTexture),
-		state_->directionalLight.GetGPUVirtualAddress());
+	if (state_->showPlane) {
+		state_->sphere.Draw(
+			commandList,
+			sphereTexture,
+			state_->directionalLight.GetGPUVirtualAddress());
+	}
+	if (state_->showMultiMesh) {
+		state_->multiMesh.Draw(
+			commandList,
+			state_->textureManager.GetGPUHandle(
+				state_->multiMeshTexture),
+			state_->directionalLight.GetGPUVirtualAddress());
+	}
 	std::vector<D3D12_GPU_DESCRIPTOR_HANDLE> multiMaterialHandles;
 	for (const auto textureHandle : state_->multiMaterialTextures) {
 		multiMaterialHandles.push_back(
 			state_->textureManager.GetGPUHandle(textureHandle));
 	}
-	state_->multiMaterial.Draw(
-		commandList,
-		multiMaterialHandles,
-		state_->directionalLight.GetGPUVirtualAddress());
-	state_->ball.Draw(
-		commandList,
-		state_->textureManager.GetGPUHandle(state_->ballTexture),
-		state_->directionalLight.GetGPUVirtualAddress());
-	state_->sprite.Draw(
-		commandList,
-		state_->textureManager.GetGPUHandle(state_->uvCheckerTexture));
+	if (state_->showMultiMaterial) {
+		state_->multiMaterial.Draw(
+			commandList,
+			multiMaterialHandles,
+			state_->directionalLight.GetGPUVirtualAddress());
+	}
+	if (state_->showSuzanne) {
+		state_->suzanne.Draw(
+			commandList,
+			state_->textureManager.GetGPUHandle(
+				state_->uvCheckerTexture),
+			state_->directionalLight.GetGPUVirtualAddress());
+	}
+	if (state_->showSphere) {
+		state_->ball.Draw(
+			commandList,
+			state_->textureManager.GetGPUHandle(state_->ballTexture),
+			state_->directionalLight.GetGPUVirtualAddress());
+	}
+	if (state_->showSprite) {
+		state_->sprite.Draw(
+			commandList,
+			state_->textureManager.GetGPUHandle(
+				state_->uvCheckerTexture));
+	}
 
 #ifdef USE_IMGUI
-	ImGui::ShowDemoWindow();
+	if (state_->showImGuiDemo) {
+		ImGui::ShowDemoWindow();
+	}
 	ImGui::Render();
 	state_->textureManager.SetDescriptorHeap(commandList);
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
