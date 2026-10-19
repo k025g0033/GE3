@@ -1,25 +1,32 @@
 #pragma once
 
+
+#ifndef DIRECTINPUT_VERSION
 #define DIRECTINPUT_VERSION 0x0800
+#endif
+
 #include <dinput.h>
 #include <wrl.h>
-#include <cstdint>
 
-class Input {
-public:
+// 入力
+class Input
+{
+public: // メンバ関数
+
+	// このクラス内ではComPtrと省略できる
+	template <class T>
+	using ComPtr = Microsoft::WRL::ComPtr<T>;
+
+	// 初期化
 	void Initialize(HINSTANCE hInstance, HWND hwnd);
+	// 更新
 	void Update();
-	bool IsKeyPressed(uint8_t keyNumber) const;
-	bool IsKeyReleased(uint8_t keyNumber) const;
-	bool IsKeyTriggered(uint8_t keyNumber) const;
-	bool IsKeyReleasedTriggered(uint8_t keyNumber) const;
-	const DIMOUSESTATE2& GetMouseState() const { return mouseState_; }
 
-private:
-	Microsoft::WRL::ComPtr<IDirectInput8> directInput_;
-	Microsoft::WRL::ComPtr<IDirectInputDevice8> keyboard_;
-	Microsoft::WRL::ComPtr<IDirectInputDevice8> mouse_;
-	BYTE key_[256]{};
-	BYTE keyPre_[256]{};
-	DIMOUSESTATE2 mouseState_{};
+private: // メンバ変数
+	ComPtr<IDirectInput8> directInput_;
+	ComPtr<IDirectInputDevice8> keyboard_;
+
+	BYTE key_[256]{};     // 今フレームのキー状態
+	BYTE keyPre_[256]{};  // 前フレームのキー状態
 };
+
