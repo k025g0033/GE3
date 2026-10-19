@@ -49,8 +49,23 @@ void Input::Update() {
 
 	// 全キーの入力状態を取得
 	hr = keyboard_->GetDeviceState(sizeof(key_), key_);
+
 	if (FAILED(hr)) {
 		std::memset(key_, 0, sizeof(key_));
 	}
 
+}
+
+bool Input::PushKey(BYTE keyNumber) {
+	// 指定キーを押していなければtrueを返す
+	if (key_[keyNumber]) {
+		return true;
+	}
+	// そうでなければfalseを返す
+	return false;
+}
+
+bool Input::TriggerKey(BYTE keyNumber) {
+	return keyPre_[keyNumber] == 0
+		&& key_[keyNumber] != 0;
 }
