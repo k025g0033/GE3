@@ -1922,8 +1922,6 @@ namespace DirectionalLight {
 // 12. ゲーム全体の処理（初期化 → 更新 → 描画 → 終了）
 // ============================================================================
 namespace Game {
-	constexpr int32_t kClientWidth = 1280;
-	constexpr int32_t kClientHeight = 720;
 
 	// 入力クラスのポインタ
 	Input* input = nullptr;
@@ -1985,9 +1983,6 @@ namespace Game {
 
 	// 起動時に一度だけ実行。ウィンドウ・入力・GPU・描画用データを準備する。
 	void Initialize() {
-		HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-		assert(SUCCEEDED(hr));
-
 
 		// WindowsAPIの初期化
 		winApp = new WinApp();
@@ -1995,10 +1990,13 @@ namespace Game {
 		// 入力クラスの生成と初期化
 		input = new Input();
 		input->Initialize(
-			GetModuleHandle(nullptr),
-			LegacyWinApp::GetHwnd());
+			winApp->GetHInstance(),
+			winApp->GetHwnd());
 		DirectXCommon::Initialize(
-			LegacyWinApp::GetHwnd(), kClientWidth, kClientHeight);
+			winApp->GetHwnd(),
+			WinApp::kClientWidth,
+			WinApp::kClientHeight);
+	
 
 		// XAudioエンジンのインスタンスを生成
 		Audio::Initialize();
@@ -2029,7 +2027,7 @@ namespace Game {
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 		ImGui::StyleColorsDark();
-		ImGui_ImplWin32_Init(LegacyWinApp::GetHwnd());
+		ImGui_ImplWin32_Init(winApp->GetHwnd());
 		ID3D12DescriptorHeap* srvHeap =
 			TextureManager::GetDescriptorHeap();
 		ImGui_ImplDX12_Init(
@@ -2158,7 +2156,7 @@ namespace Game {
 		const Matrix4x4 viewMatrix = Inverse(cameraMatrix);
 		const Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(
 			0.45f,
-			static_cast<float>(kClientWidth) / kClientHeight,
+			static_cast<float>(WinApp::kClientWidth) / WinApp::kClientHeight,
 			0.1f,
 			100.0f);
 		const Matrix4x4 viewProjectionMatrix =
@@ -2169,8 +2167,8 @@ namespace Game {
 			: Multiply(viewMatrix, projectionMatrix);
 		Object3d::Update(viewProjectionMatrix);
 		Sprite::Update(
-			static_cast<float>(kClientWidth),
-			static_cast<float>(kClientHeight));
+			static_cast<float>(WinApp::kClientWidth),
+			static_cast<float>(WinApp::kClientHeight));
 	}
 
 	// 毎フレーム実行。3Dモデル → スプライト → ImGuiの順に描画する。
