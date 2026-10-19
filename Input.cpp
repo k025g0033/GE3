@@ -57,7 +57,7 @@ void Input::Update() {
 }
 
 bool Input::PushKey(BYTE keyNumber) {
-	// 指定キーを押していなければtrueを返す
+	// 指定キーを押していればtrueを返す
 	if (key_[keyNumber]) {
 		return true;
 	}
