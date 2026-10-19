@@ -38,6 +38,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 #pragma comment(lib, "xaudio2.lib")
 
 #include "Input.h"
+#include "WinApp.h"
 
 // ============================================================================
 // 1. 描画に使うデータ構造と行列計算
@@ -299,7 +300,7 @@ Matrix4x4 Inverse(const Matrix4x4& m) {
 // ============================================================================
 // 2. ウィンドウの作成とメッセージ処理
 // ============================================================================
-namespace WinApp {
+namespace LegacyWinApp {
 	// 使用するデータと関数の宣言
 
 	void Finalize();
@@ -330,35 +331,7 @@ namespace WinApp {
 	}
 
 	void Initialize(const wchar_t* title, int32_t clientWidth, int32_t clientHeight) {
-		instance_ = GetModuleHandle(nullptr);
-
-		WNDCLASS wc{};
-		wc.lpfnWndProc = WindowProc;
-		wc.lpszClassName = kWindowClassName;
-		wc.hInstance = instance_;
-		wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-		const ATOM registeredClass = RegisterClass(&wc);
-		assert(registeredClass != 0);
-
-		RECT windowRect{ 0, 0, clientWidth, clientHeight };
-		const BOOL adjusted = AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, false);
-		assert(adjusted != FALSE);
-
-		hwnd_ = CreateWindow(
-			kWindowClassName,
-			title,
-			WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT,
-			CW_USEDEFAULT,
-			windowRect.right - windowRect.left,
-			windowRect.bottom - windowRect.top,
-			nullptr,
-			nullptr,
-			instance_,
-			nullptr);
-		assert(hwnd_ != nullptr);
-
-		ShowWindow(hwnd_, SW_SHOW);
+		
 	}
 
 	bool ProcessMessage() {
@@ -1954,6 +1927,8 @@ namespace Game {
 
 	// 入力クラスのポインタ
 	Input* input = nullptr;
+	// ウィンドウクラスのポインタ
+	WinApp* winApp = nullptr;
 
 	Audio::SoundData soundData{};
 
@@ -1994,7 +1969,9 @@ namespace Game {
 		TextureManager::Finalize();
 		Object3dCommon::Finalize();
 		DirectXCommon::Finalize();
-		WinApp::Finalize();
+		// WindowsAPIの解放
+		delete winApp;
+		winApp = nullptr;
 
 #ifdef _DEBUG
 		IDXGIDebug1* debug = nullptr;
@@ -2012,14 +1989,16 @@ namespace Game {
 		assert(SUCCEEDED(hr));
 
 
-		WinApp::Initialize(L"CG2", kClientWidth, kClientHeight);
+		// WindowsAPIの初期化
+		winApp = new WinApp();
+		winApp->Initialize();
 		// 入力クラスの生成と初期化
 		input = new Input();
 		input->Initialize(
 			GetModuleHandle(nullptr),
-			WinApp::GetHwnd());
+			LegacyWinApp::GetHwnd());
 		DirectXCommon::Initialize(
-			WinApp::GetHwnd(), kClientWidth, kClientHeight);
+			LegacyWinApp::GetHwnd(), kClientWidth, kClientHeight);
 
 		// XAudioエンジンのインスタンスを生成
 		Audio::Initialize();
@@ -2050,7 +2029,7 @@ namespace Game {
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 		ImGui::StyleColorsDark();
-		ImGui_ImplWin32_Init(WinApp::GetHwnd());
+		ImGui_ImplWin32_Init(LegacyWinApp::GetHwnd());
 		ID3D12DescriptorHeap* srvHeap =
 			TextureManager::GetDescriptorHeap();
 		ImGui_ImplDX12_Init(
