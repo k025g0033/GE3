@@ -1,5 +1,6 @@
 #pragma once
 #include <Windows.h>
+#include <cstdint>
 
 // WindowsAPI
 class WinApp
@@ -15,7 +16,18 @@ public: // メンバ関数
 
 	// 作成したウィンドウのハンドルを取得
 	HWND GetHwnd() const { return hwnd_; }
+	// アプリのハンドルを取得
+	HINSTANCE GetHInstance() const {
+		return windowClass_.hInstance;
+	}
+public: // 定数
+	static const int32_t kClientWidth = 1280;
+	static const int32_t kClientHeight = 720;
+
 private:
+
+	// ウィンドウクラスの設定
+	WNDCLASS windowClass_{};
 
 	static constexpr const wchar_t* kWindowClassName =
 		L"CG2WindowClass";

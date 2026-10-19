@@ -8,21 +8,22 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 #endif
 
 void WinApp::Initialize() {
-	const int clientWidth = 1280;
-	const int clientHeight = 720;
 	const wchar_t* title = L"GE3";
+
+	HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+	assert(SUCCEEDED(hr));
 
 	instance_ = GetModuleHandle(nullptr);
 
-	WNDCLASS wc{};
-	wc.lpfnWndProc = WinApp::WindowProc;
-	wc.lpszClassName = kWindowClassName;
-	wc.hInstance = instance_;
-	wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	const ATOM registeredClass = RegisterClass(&wc);
+	windowClass_.lpfnWndProc = WinApp::WindowProc;
+	windowClass_.lpszClassName = kWindowClassName;
+	windowClass_.hInstance = instance_;
+	windowClass_.hCursor = LoadCursor(nullptr, IDC_ARROW);
+
+	const ATOM registeredClass = RegisterClass(&windowClass_);
 	assert(registeredClass != 0);
 
-	RECT windowRect{ 0, 0, clientWidth, clientHeight };
+	RECT windowRect{ 0, 0, kClientWidth, kClientHeight };
 	const BOOL adjusted = AdjustWindowRect(&windowRect, WS_OVERLAPPEDWINDOW, false);
 	assert(adjusted != FALSE);
 
