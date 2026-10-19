@@ -22,6 +22,10 @@ public: // メンバ関数
 	// 更新
 	void Update();
 
+	bool PushKey(BYTE keyNumber);
+
+	bool TriggerKey(BYTE keyNumber);
+
 private: // メンバ変数
 	ComPtr<IDirectInput8> directInput_;
 	ComPtr<IDirectInputDevice8> keyboard_;

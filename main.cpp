@@ -2070,6 +2070,10 @@ namespace Game {
 		input->Update();
 		DebugCamera::Update();
 
+		if (input->TriggerKey(DIK_0)) {
+			OutputDebugStringW(L"0キーを押した瞬間\n");
+		}
+
 #ifdef USE_IMGUI
 		ImGui_ImplDX12_NewFrame();
 		ImGui_ImplWin32_NewFrame();
