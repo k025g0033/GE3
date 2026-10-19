@@ -2236,6 +2236,10 @@ namespace Game {
 
 		// 音声データを解放
 		Audio::Unload(&soundData);
+
+		// 入力クラスの解放
+		delete input;
+		input = nullptr;
 	}
 
 } // namespace Game
