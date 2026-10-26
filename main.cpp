@@ -1,4 +1,4 @@
-// 自作クラスを使わず、このファイル内の変数と通常の関数で処理する。
+﻿// 自作クラスを使わず、このファイル内の変数と通常の関数で処理する。
 // 読む順番: 末尾のWinMain → Gameの初期化・更新・描画・終了 → 各機能。
 // namespaceは同名の変数・関数を区別するための名前の整理に使用する。
 #define DIRECTINPUT_VERSION 0x0800
@@ -307,7 +307,6 @@ namespace LegacyWinApp {
 
 
 	void Initialize(const wchar_t* title, int32_t clientWidth, int32_t clientHeight);
-	bool ProcessMessage();
 
 
 	LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -334,14 +333,7 @@ namespace LegacyWinApp {
 		
 	}
 
-	bool ProcessMessage() {
-		MSG msg{};
-		if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-		return msg.message == WM_QUIT;
-	}
+
 
 	LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 #ifdef USE_IMGUI
@@ -1948,15 +1940,13 @@ namespace Game {
 	void Run() {
 		Initialize();
 
-		MSG msg{};
-		while (msg.message != WM_QUIT) {
-			if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
-				TranslateMessage(&msg);
-				DispatchMessage(&msg);
-			} else {
-				Update();
-				Draw();
+		while (true) {
+			// 終了メッセージを受け取ったらゲームループを抜ける。
+			if (winApp->ProcessMessage()) {
+				break;
 			}
+			Update();
+			Draw();
 		}
 
 		Finalize();
@@ -1989,9 +1979,7 @@ namespace Game {
 		winApp->Initialize();
 		// 入力クラスの生成と初期化
 		input = new Input();
-		input->Initialize(
-			winApp->GetHInstance(),
-			winApp->GetHwnd());
+		input->Initialize(winApp);
 		DirectXCommon::Initialize(
 			winApp->GetHwnd(),
 			WinApp::kClientWidth,

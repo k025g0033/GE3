@@ -16,6 +16,9 @@ public: // メンバ関数
 	// 終了
 	void Finalize();
 
+	// メッセージの処理
+	bool ProcessMessage();
+
 	// 作成したウィンドウのハンドルを取得
 	HWND GetHwnd() const { return hwnd_; }
 	// アプリのハンドルを取得
