@@ -68,3 +68,19 @@ void WinApp::Finalize() {
 	CloseWindow(hwnd_);
 	CoUninitialize();
 }
+
+bool WinApp::ProcessMessage() {
+	MSG msg{};
+
+	// キューに届いたメッセージを取得し、ウィンドウへ渡す。
+	if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+	}
+
+	// 終了するかどうかを呼び出し元のゲームループへ返す。
+	if (msg.message == WM_QUIT) {
+		return true;
+	}
+	return false;
+}
