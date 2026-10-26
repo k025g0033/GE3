@@ -35,6 +35,6 @@ private: // メンバ変数
 	BYTE keyPre_[256]{};  // 前フレームのキー状態
 
 	// WindowsAPI
-	WinApp* winApp = nullptr;
+	WinApp* winApp_ = nullptr;
 };
 

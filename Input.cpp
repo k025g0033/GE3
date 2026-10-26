@@ -1,4 +1,4 @@
-#include "Input.h"
+﻿#include "Input.h"
 #include <cassert>
 #include <cstring>
 
@@ -7,11 +7,11 @@
 
 void Input::Initialize(WinApp* winApp) {
 	// 借りてきたWinAppのインスタンスを記録
-	this->winApp = winApp;
+	winApp_ = winApp;
 
 	// DirectInputの初期化
 	HRESULT hr = DirectInput8Create(
-		winApp->GetHInstance(),
+		winApp_->GetHInstance(),
 		DIRECTINPUT_VERSION,
 		IID_IDirectInput8,
 		reinterpret_cast<void**>(directInput_.GetAddressOf()),
@@ -31,7 +31,7 @@ void Input::Initialize(WinApp* winApp) {
 
 	// 排他制御レベルのセット
 	hr = keyboard_->SetCooperativeLevel(
-		winApp->GetHwnd(),
+		winApp_->GetHwnd(),
 		DISCL_FOREGROUND | DISCL_NONEXCLUSIVE | DISCL_NOWINKEY);
 	assert(SUCCEEDED(hr));
 
