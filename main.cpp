@@ -1967,7 +1967,8 @@ namespace Game {
 		TextureManager::Finalize();
 		Object3dCommon::Finalize();
 		DirectXCommon::Finalize();
-		// WindowsAPIの解放
+		// WindowsAPIの終了と解放
+		winApp->Finalize();
 		delete winApp;
 		winApp = nullptr;
 
@@ -1978,7 +1979,6 @@ namespace Game {
 			debug->Release();
 		}
 #endif
-		CoUninitialize();
 	}
 
 	// 起動時に一度だけ実行。ウィンドウ・入力・GPU・描画用データを準備する。

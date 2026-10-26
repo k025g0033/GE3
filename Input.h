@@ -1,5 +1,6 @@
-#pragma once
+﻿#pragma once
 
+#include "WinApp.h"
 
 #ifndef DIRECTINPUT_VERSION
 #define DIRECTINPUT_VERSION 0x0800
@@ -18,7 +19,7 @@ public: // メンバ関数
 	using ComPtr = Microsoft::WRL::ComPtr<T>;
 
 	// 初期化
-	void Initialize(HINSTANCE hInstance, HWND hwnd);
+	void Initialize(WinApp* winApp);
 	// 更新
 	void Update();
 
@@ -32,5 +33,8 @@ private: // メンバ変数
 
 	BYTE key_[256]{};     // 今フレームのキー状態
 	BYTE keyPre_[256]{};  // 前フレームのキー状態
+
+	// WindowsAPI
+	WinApp* winApp = nullptr;
 };
 

@@ -63,3 +63,8 @@ LRESULT CALLBACK WinApp::WindowProc(
 
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
+
+void WinApp::Finalize() {
+	CloseWindow(hwnd_);
+	CoUninitialize();
+}
