@@ -258,3 +258,65 @@ D3D12_GPU_DESCRIPTOR_HANDLE DirectXCommon::GetSRVGPUDescriptorHandle(uint32_t in
     assert(index < 128);
     return GetGPUDescriptorHandle(srvDescriptorHeap_.Get(), descriptorSizeSRV_, index);
 }
+
+// 描画前処理: 描画先へ切り替え、色・深度をクリアして描画範囲を設定する。
+void DirectXCommon::PreDraw() {
+		const UINT backBufferIndex = swapChain_->GetCurrentBackBufferIndex();
+		D3D12_RESOURCE_BARRIER barrier{};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Transition.pResource = swapChainResources_[backBufferIndex].Get();
+		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		commandList_->ResourceBarrier(1, &barrier);
+
+		const D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle =
+			dsvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart();
+		commandList_->OMSetRenderTargets(
+			1, &rtvHandles_[backBufferIndex], false, &dsvHandle);
+		const float clearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
+		commandList_->ClearRenderTargetView(
+			rtvHandles_[backBufferIndex], clearColor, 0, nullptr);
+		commandList_->ClearDepthStencilView(
+			dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+		// 描画で使用するSRVヒープを設定する。
+        ID3D12DescriptorHeap* heaps[] = { srvDescriptorHeap_.Get() };
+        commandList_->SetDescriptorHeaps(1, heaps);
+        commandList_->RSSetViewports(1, &viewport_);
+		commandList_->RSSetScissorRects(1, &scissorRect_);
+	}
+
+// 描画後処理: コマンドをGPUへ送り、表示・完了待ち・次フレームの準備を行う。
+void DirectXCommon::PostDraw() {
+		const UINT backBufferIndex = swapChain_->GetCurrentBackBufferIndex();
+		D3D12_RESOURCE_BARRIER barrier{};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Transition.pResource = swapChainResources_[backBufferIndex].Get();
+		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+		commandList_->ResourceBarrier(1, &barrier);
+
+		HRESULT hr = commandList_->Close();
+		assert(SUCCEEDED(hr));
+		ID3D12CommandList* commandLists[] = { commandList_.Get() };
+		commandQueue_->ExecuteCommandLists(1, commandLists);
+		hr = swapChain_->Present(1, 0);
+        assert(SUCCEEDED(hr));
+		WaitForGPU();
+
+		hr = commandAllocator_->Reset();
+		assert(SUCCEEDED(hr));
+		hr = commandList_->Reset(commandAllocator_.Get(), nullptr);
+		assert(SUCCEEDED(hr));
+	}
+
+// フェンスでGPUの実行完了を待つ。
+void DirectXCommon::WaitForGPU() {
+		++fenceValue_;
+		HRESULT hr = commandQueue_->Signal(fence_.Get(), fenceValue_);
+		assert(SUCCEEDED(hr));
+		if (fence_->GetCompletedValue() < fenceValue_) {
+			hr = fence_->SetEventOnCompletion(fenceValue_, fenceEvent_);
+			assert(SUCCEEDED(hr));
+			WaitForSingleObject(fenceEvent_, INFINITE);
+		}
+	}

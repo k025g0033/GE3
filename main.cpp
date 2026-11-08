@@ -355,7 +355,7 @@ namespace LegacyWinApp {
 // 3. DirectX 12の初期化・描画開始・GPU同期
 // ============================================================================
 namespace LegacyDirectXCommon {
-    // 初期化を担当するクラス。更新・終了処理はまだここに置く。
+    // 初期化・描画準備はクラスが担当。終了処理と初期転送だけを残す。
     DirectXCommon* instance = nullptr;
 
 void Finalize() {
@@ -386,72 +386,23 @@ void Finalize() {
 #endif
 	}
 
-void BeginFrame() {
-		const UINT backBufferIndex = instance->swapChain_->GetCurrentBackBufferIndex();
-		D3D12_RESOURCE_BARRIER barrier{};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Transition.pResource = instance->swapChainResources_[backBufferIndex].Get();
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		instance->commandList_->ResourceBarrier(1, &barrier);
 
-		const D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle =
-			instance->dsvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart();
-		instance->commandList_->OMSetRenderTargets(
-			1, &instance->rtvHandles_[backBufferIndex], false, &dsvHandle);
-		const float clearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
-		instance->commandList_->ClearRenderTargetView(
-			instance->rtvHandles_[backBufferIndex], clearColor, 0, nullptr);
-		instance->commandList_->ClearDepthStencilView(
-			dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-		instance->commandList_->RSSetViewports(1, &instance->viewport_);
-		instance->commandList_->RSSetScissorRects(1, &instance->scissorRect_);
-	}
 
-void EndFrame() {
-		const UINT backBufferIndex = instance->swapChain_->GetCurrentBackBufferIndex();
-		D3D12_RESOURCE_BARRIER barrier{};
-		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Transition.pResource = instance->swapChainResources_[backBufferIndex].Get();
-		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		instance->commandList_->ResourceBarrier(1, &barrier);
 
-		HRESULT hr = instance->commandList_->Close();
-		assert(SUCCEEDED(hr));
-		ID3D12CommandList* commandLists[] = { instance->commandList_.Get() };
-		instance->commandQueue_->ExecuteCommandLists(1, commandLists);
-		instance->swapChain_->Present(1, 0);
-		WaitForGPU();
-
-		hr = instance->commandAllocator_->Reset();
-		assert(SUCCEEDED(hr));
-		hr = instance->commandList_->Reset(instance->commandAllocator_.Get(), nullptr);
-		assert(SUCCEEDED(hr));
-	}
 
 void ExecuteCommandListAndWait() {
 		HRESULT hr = instance->commandList_->Close();
 		assert(SUCCEEDED(hr));
 		ID3D12CommandList* commandLists[] = { instance->commandList_.Get() };
 		instance->commandQueue_->ExecuteCommandLists(1, commandLists);
-		WaitForGPU();
+		instance->WaitForGPU();
 		hr = instance->commandAllocator_->Reset();
 		assert(SUCCEEDED(hr));
 		hr = instance->commandList_->Reset(instance->commandAllocator_.Get(), nullptr);
 		assert(SUCCEEDED(hr));
 	}
 
-void WaitForGPU() {
-		++instance->fenceValue_;
-		HRESULT hr = instance->commandQueue_->Signal(instance->fence_.Get(), instance->fenceValue_);
-		assert(SUCCEEDED(hr));
-		if (instance->fence_->GetCompletedValue() < instance->fenceValue_) {
-			hr = instance->fence_->SetEventOnCompletion(instance->fenceValue_, instance->fenceEvent_);
-			assert(SUCCEEDED(hr));
-			WaitForSingleObject(instance->fenceEvent_, INFINITE);
-		}
-	}
+
 } // namespace LegacyDirectXCommon
 
 // ============================================================================
@@ -1874,9 +1825,8 @@ namespace Game {
 	void Draw() {
 		ID3D12GraphicsCommandList* commandList =
 			LegacyDirectXCommon::instance->GetCommandList();
-		LegacyDirectXCommon::BeginFrame();
+		dxCommon->PreDraw();
 		Object3dCommon::SetupDraw(commandList);
-		TextureManager::SetDescriptorHeap(commandList);
 
 		const auto sphereTexture = TextureManager::GetGPUHandle(
 			useMonsterBall
@@ -1893,11 +1843,10 @@ namespace Game {
 #ifdef USE_IMGUI
 		ImGui::ShowDemoWindow();
 		ImGui::Render();
-		TextureManager::SetDescriptorHeap(commandList);
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
 #endif
 
-		LegacyDirectXCommon::EndFrame();
+		dxCommon->PostDraw();
 	}
 
 	// 終了時に一度だけ実行。ImGuiと音声を終了する。
