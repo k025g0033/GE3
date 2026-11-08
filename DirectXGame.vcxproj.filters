@@ -105,4 +105,8 @@
     <ClInclude Include="Logger.h" />
     <ClInclude Include="StringUtility.h" />
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="D3DResourceLeakChecker.cpp" />
+    <ClInclude Include="D3DResourceLeakChecker.h" />
+  </ItemGroup>
 </Project>

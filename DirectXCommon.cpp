@@ -2,6 +2,9 @@
 #include <cassert>
 #include <format>
 #include "Logger.h"
+#include "StringUtility.h"
+#include "externals/DirectXTex/d3dx12.h"
+#include <vector>
 #ifdef USE_IMGUI
 #include "externals/imgui/imgui.h"
 #include "externals/imgui/imgui_impl_dx12.h"
@@ -319,4 +322,160 @@ void DirectXCommon::WaitForGPU() {
 			assert(SUCCEEDED(hr));
 			WaitForSingleObject(fenceEvent_, INFINITE);
 		}
+	}
+
+// HLSLをDXCでコンパイルする。
+Microsoft::WRL::ComPtr<IDxcBlob> DirectXCommon::CompileShader(
+		const std::wstring& filePath, const wchar_t* profile) {
+		Logger::Log(std::format(
+			L"Begin CompileShader, path:{}, profile:{}\n", filePath, profile));
+		Microsoft::WRL::ComPtr<IDxcBlobEncoding> shaderSource;
+		HRESULT hr = dxcUtils_->LoadFile(
+			filePath.c_str(), nullptr, &shaderSource);
+		assert(SUCCEEDED(hr));
+		DxcBuffer sourceBuffer{};
+		sourceBuffer.Ptr = shaderSource->GetBufferPointer();
+		sourceBuffer.Size = shaderSource->GetBufferSize();
+		sourceBuffer.Encoding = DXC_CP_UTF8;
+		const wchar_t* arguments[] = {
+			filePath.c_str(), L"-E", L"main", L"-T", profile,
+			L"-Zi", L"-Qembed_debug", L"-Od", L"-Zpr" };
+		Microsoft::WRL::ComPtr<IDxcResult> result;
+		hr = dxcCompiler_->Compile(
+			&sourceBuffer, arguments, _countof(arguments), includeHandler_.Get(),
+			IID_PPV_ARGS(&result));
+		assert(SUCCEEDED(hr));
+		Microsoft::WRL::ComPtr<IDxcBlobUtf8> errors;
+		result->GetOutput(DXC_OUT_ERRORS, IID_PPV_ARGS(&errors), nullptr);
+		if (errors && errors->GetStringLength() != 0) {
+			OutputDebugStringA(errors->GetStringPointer());
+			assert(false);
+		}
+		Microsoft::WRL::ComPtr<IDxcBlob> shaderBlob;
+		hr = result->GetOutput(
+			DXC_OUT_OBJECT, IID_PPV_ARGS(&shaderBlob), nullptr);
+		assert(SUCCEEDED(hr));
+		Logger::Log(std::format(
+			L"Compile Succeeded, path:{}, profile:{}\n", filePath, profile));
+		return shaderBlob;
+	}
+
+// GPUテクスチャとCPU書き込み用バッファの生成。
+Microsoft::WRL::ComPtr<ID3D12Resource>
+		DirectXCommon::CreateTextureResource(const DirectX::TexMetadata& metadata) {
+		D3D12_RESOURCE_DESC resourceDesc{};
+		resourceDesc.Width = metadata.width;
+		resourceDesc.Height = static_cast<UINT>(metadata.height);
+		resourceDesc.MipLevels = static_cast<UINT16>(metadata.mipLevels);
+		resourceDesc.DepthOrArraySize = static_cast<UINT16>(metadata.arraySize);
+		resourceDesc.Format = metadata.format;
+		resourceDesc.SampleDesc.Count = 1;
+		resourceDesc.Dimension = static_cast<D3D12_RESOURCE_DIMENSION>(metadata.dimension);
+		D3D12_HEAP_PROPERTIES heapProperties{};
+		heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
+		Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+		HRESULT hr = device_->CreateCommittedResource(
+			&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc,
+			D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&resource));
+		assert(SUCCEEDED(hr));
+		return resource;
+	}
+Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::CreateBufferResource(
+		size_t sizeInBytes) {
+		D3D12_HEAP_PROPERTIES heapProperties{};
+		heapProperties.Type = D3D12_HEAP_TYPE_UPLOAD;
+		D3D12_RESOURCE_DESC resourceDesc{};
+		resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		resourceDesc.Width = sizeInBytes;
+		resourceDesc.Height = 1;
+		resourceDesc.DepthOrArraySize = 1;
+		resourceDesc.MipLevels = 1;
+		resourceDesc.SampleDesc.Count = 1;
+		resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+		Microsoft::WRL::ComPtr<ID3D12Resource> resource;
+		HRESULT hr = device_->CreateCommittedResource(
+			&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc,
+			D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&resource));
+		assert(SUCCEEDED(hr));
+		return resource;
+	}
+
+// ファイル読み込みはDirectXの状態に依存しないのでstatic関数にする。
+DirectX::ScratchImage DirectXCommon::LoadTexture(const std::string& filePath) {
+		DirectX::ScratchImage image;
+		HRESULT hr = DirectX::LoadFromWICFile(
+			StringUtility::ConvertString(filePath).c_str(), DirectX::WIC_FLAGS_FORCE_SRGB,
+			nullptr, image);
+		assert(SUCCEEDED(hr));
+		DirectX::ScratchImage mipImages;
+		hr = DirectX::GenerateMipMaps(
+			image.GetImages(), image.GetImageCount(), image.GetMetadata(),
+			DirectX::TEX_FILTER_SRGB, 0, mipImages);
+		assert(SUCCEEDED(hr));
+
+    return mipImages;
+}
+
+// 戻り値の中間バッファは、GPU転送完了まで呼び出し側で保持する。
+Microsoft::WRL::ComPtr<ID3D12Resource> DirectXCommon::UploadTextureData(
+    const Microsoft::WRL::ComPtr<ID3D12Resource>& texture,
+    const DirectX::ScratchImage& mipImages) {
+		std::vector<D3D12_SUBRESOURCE_DATA> subresources;
+		DirectX::PrepareUpload(
+			device_.Get(), mipImages.GetImages(), mipImages.GetImageCount(),
+			mipImages.GetMetadata(), subresources);
+		auto intermediateResource = CreateBufferResource(GetRequiredIntermediateSize(
+			texture.Get(), 0, static_cast<UINT>(subresources.size())));
+		UpdateSubresources(
+			commandList_.Get(), texture.Get(), intermediateResource.Get(),
+			0, 0, static_cast<UINT>(subresources.size()), subresources.data());
+		D3D12_RESOURCE_BARRIER barrier{};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Transition.pResource = texture.Get();
+		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_GENERIC_READ;
+		commandList_->ResourceBarrier(1, &barrier);
+
+    return intermediateResource;
+}
+
+void DirectXCommon::Finalize() {
+		if (fenceEvent_) {
+			CloseHandle(fenceEvent_);
+			fenceEvent_ = nullptr;
+		}
+		fence_.Reset();
+		depthStencilResource_.Reset();
+		dsvDescriptorHeap_.Reset();
+		for (auto& resource : swapChainResources_) {
+			resource.Reset();
+		}
+		rtvDescriptorHeap_.Reset();
+		swapChain_.Reset();
+		commandList_.Reset();
+		commandAllocator_.Reset();
+		commandQueue_.Reset();
+		srvDescriptorHeap_.Reset();
+        includeHandler_.Reset();
+        dxcCompiler_.Reset();
+        dxcUtils_.Reset();
+        device_.Reset();
+		adapter_.Reset();
+		dxgiFactory_.Reset();
+#ifdef _DEBUG
+		debugController_.Reset();
+#endif
+	}
+
+void DirectXCommon::ExecuteCommandListAndWait() {
+		HRESULT hr = commandList_->Close();
+		assert(SUCCEEDED(hr));
+		ID3D12CommandList* commandLists[] = { commandList_.Get() };
+		commandQueue_->ExecuteCommandLists(1, commandLists);
+		WaitForGPU();
+		hr = commandAllocator_->Reset();
+		assert(SUCCEEDED(hr));
+		hr = commandList_->Reset(commandAllocator_.Get(), nullptr);
+		assert(SUCCEEDED(hr));
 	}
