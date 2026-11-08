@@ -7,19 +7,21 @@
 #include <array>
 #include <cstdint>
 
-// 描画・終了処理は、次の移植段階までmain.cppに残す。
+// 終了処理と初期テクスチャ転送は、次の移植段階までmain.cppに残す。
 namespace LegacyDirectXCommon {
     void Finalize();
-    void BeginFrame();
-    void EndFrame();
+
     void ExecuteCommandListAndWait();
-    void WaitForGPU();
+
 }
 
 class DirectXCommon {
 public:
     // DirectX基盤を生成し、描画に必要なデータを準備する。
     void Initialize(WinApp* winApp);
+    // シーン描画の前後に毎フレーム呼び出す。
+    void PreDraw();
+    void PostDraw();
 	ID3D12Device* GetDevice() const { return device_.Get(); }
 	IDXGIFactory7* GetDxgiFactory() const { return dxgiFactory_.Get(); }
 	ID3D12CommandQueue* GetCommandQueue() const { return commandQueue_.Get(); }
@@ -35,6 +37,7 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVGPUDescriptorHandle(uint32_t index) const;
 
 private:
+    void WaitForGPU();
     void InitializeDescriptorHeaps();
     void InitializeViewport();
     void InitializeScissorRect();
@@ -56,10 +59,9 @@ private:
 
     // 移植途中の既存処理だけに、同じ描画データへのアクセスを許可する。
     friend void LegacyDirectXCommon::Finalize();
-    friend void LegacyDirectXCommon::BeginFrame();
-    friend void LegacyDirectXCommon::EndFrame();
+
     friend void LegacyDirectXCommon::ExecuteCommandListAndWait();
-    friend void LegacyDirectXCommon::WaitForGPU();
+
 
     WinApp* winApp_ = nullptr; // 所有権は持たない
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> srvDescriptorHeap_;
