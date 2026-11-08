@@ -1,4 +1,4 @@
-// 自作クラスを使わず、このファイル内の変数と通常の関数で処理する。
+﻿// 自作クラスを使わず、このファイル内の変数と通常の関数で処理する。
 // 読む順番: 末尾のWinMain → Gameの初期化・更新・描画・終了 → 各機能。
 // namespaceは同名の変数・関数を区別するための名前の整理に使用する。
 #define DIRECTINPUT_VERSION 0x0800
@@ -29,15 +29,15 @@
 #include "externals/imgui/imgui_impl_win32.h"
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 #endif
-#pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dinput8.lib")
-#pragma comment(lib, "dxcompiler.lib")
-#pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "xaudio2.lib")
 
 #include "Input.h"
 #include "WinApp.h"
+#include "DirectXCommon.h"
+#include "Logger.h"
+#include "StringUtility.h"
 
 // ============================================================================
 // 1. 描画に使うデータ構造と行列計算
@@ -354,348 +354,105 @@ namespace LegacyWinApp {
 // ============================================================================
 // 3. DirectX 12の初期化・描画開始・GPU同期
 // ============================================================================
-namespace DirectXCommon {
-	// 使用するデータと関数の宣言
+namespace LegacyDirectXCommon {
+    // 初期化を担当するクラス。更新・終了処理はまだここに置く。
+    DirectXCommon* instance = nullptr;
 
-
-	void Initialize(HWND hwnd, int32_t clientWidth, int32_t clientHeight);
-	void Finalize();
-	void BeginFrame();
-	void EndFrame();
-	void ExecuteCommandListAndWait();
-
-
-	void CreateDevice();
-	void CreateCommandObjects();
-	void CreateSwapChain(HWND hwnd, int32_t clientWidth, int32_t clientHeight);
-	void CreateRenderTargets();
-	void CreateDepthStencil(int32_t clientWidth, int32_t clientHeight);
-	void CreateFence();
-	void SetupDebugInfoQueue();
-	void WaitForGPU();
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeap(
-		D3D12_DESCRIPTOR_HEAP_TYPE type, UINT descriptorCount);
-
-#ifdef _DEBUG
-	Microsoft::WRL::ComPtr<ID3D12Debug1> debugController_;
-#endif
-	Microsoft::WRL::ComPtr<IDXGIFactory7> dxgiFactory_;
-	Microsoft::WRL::ComPtr<IDXGIAdapter4> adapter_;
-	Microsoft::WRL::ComPtr<ID3D12Device> device_;
-	Microsoft::WRL::ComPtr<ID3D12CommandQueue> commandQueue_;
-	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> commandAllocator_;
-	Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> commandList_;
-	Microsoft::WRL::ComPtr<IDXGISwapChain4> swapChain_;
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvDescriptorHeap_;
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> dsvDescriptorHeap_;
-	std::array<Microsoft::WRL::ComPtr<ID3D12Resource>, 2> swapChainResources_;
-	std::array<D3D12_CPU_DESCRIPTOR_HANDLE, 2> rtvHandles_{};
-	Microsoft::WRL::ComPtr<ID3D12Resource> depthStencilResource_;
-	Microsoft::WRL::ComPtr<ID3D12Fence> fence_;
-	uint64_t fenceValue_ = 0;
-	HANDLE fenceEvent_ = nullptr;
-	D3D12_VIEWPORT viewport_{};
-	D3D12_RECT scissorRect_{};
-
-	ID3D12Device* GetDevice() { return device_.Get(); }
-	IDXGIFactory7* GetDxgiFactory() { return dxgiFactory_.Get(); }
-	ID3D12CommandQueue* GetCommandQueue() { return commandQueue_.Get(); }
-	ID3D12CommandAllocator* GetCommandAllocator() { return commandAllocator_.Get(); }
-	ID3D12GraphicsCommandList* GetCommandList() { return commandList_.Get(); }
-
-	// 処理の実装
-
-
-	namespace {
-		void Log(const std::string& message) {
-			OutputDebugStringA(message.c_str());
+void Finalize() {
+		if (instance->fenceEvent_) {
+			CloseHandle(instance->fenceEvent_);
+			instance->fenceEvent_ = nullptr;
 		}
-
-		void Log(const std::wstring& message) {
-			OutputDebugStringW(message.c_str());
-		}
-	}
-
-
-	void Initialize(HWND hwnd, int32_t clientWidth, int32_t clientHeight) {
-#ifdef _DEBUG
-		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController_)))) {
-			debugController_->EnableDebugLayer();
-			debugController_->SetEnableGPUBasedValidation(TRUE);
-		}
-#endif
-
-		CreateDevice();
-		SetupDebugInfoQueue();
-		CreateCommandObjects();
-		CreateSwapChain(hwnd, clientWidth, clientHeight);
-		CreateRenderTargets();
-		CreateDepthStencil(clientWidth, clientHeight);
-		CreateFence();
-
-		viewport_.Width = static_cast<float>(clientWidth);
-		viewport_.Height = static_cast<float>(clientHeight);
-		viewport_.MaxDepth = 1.0f;
-		scissorRect_.right = clientWidth;
-		scissorRect_.bottom = clientHeight;
-	}
-
-	void Finalize() {
-		if (fenceEvent_) {
-			CloseHandle(fenceEvent_);
-			fenceEvent_ = nullptr;
-		}
-		fence_.Reset();
-		depthStencilResource_.Reset();
-		dsvDescriptorHeap_.Reset();
-		for (auto& resource : swapChainResources_) {
+		instance->fence_.Reset();
+		instance->depthStencilResource_.Reset();
+		instance->dsvDescriptorHeap_.Reset();
+		for (auto& resource : instance->swapChainResources_) {
 			resource.Reset();
 		}
-		rtvDescriptorHeap_.Reset();
-		swapChain_.Reset();
-		commandList_.Reset();
-		commandAllocator_.Reset();
-		commandQueue_.Reset();
-		device_.Reset();
-		adapter_.Reset();
-		dxgiFactory_.Reset();
+		instance->rtvDescriptorHeap_.Reset();
+		instance->swapChain_.Reset();
+		instance->commandList_.Reset();
+		instance->commandAllocator_.Reset();
+		instance->commandQueue_.Reset();
+		instance->srvDescriptorHeap_.Reset();
+        instance->includeHandler_.Reset();
+        instance->dxcCompiler_.Reset();
+        instance->dxcUtils_.Reset();
+        instance->device_.Reset();
+		instance->adapter_.Reset();
+		instance->dxgiFactory_.Reset();
 #ifdef _DEBUG
-		debugController_.Reset();
+		instance->debugController_.Reset();
 #endif
 	}
 
-	void BeginFrame() {
-		const UINT backBufferIndex = swapChain_->GetCurrentBackBufferIndex();
+void BeginFrame() {
+		const UINT backBufferIndex = instance->swapChain_->GetCurrentBackBufferIndex();
 		D3D12_RESOURCE_BARRIER barrier{};
 		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Transition.pResource = swapChainResources_[backBufferIndex].Get();
+		barrier.Transition.pResource = instance->swapChainResources_[backBufferIndex].Get();
 		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
 		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-		commandList_->ResourceBarrier(1, &barrier);
+		instance->commandList_->ResourceBarrier(1, &barrier);
 
 		const D3D12_CPU_DESCRIPTOR_HANDLE dsvHandle =
-			dsvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart();
-		commandList_->OMSetRenderTargets(
-			1, &rtvHandles_[backBufferIndex], false, &dsvHandle);
+			instance->dsvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart();
+		instance->commandList_->OMSetRenderTargets(
+			1, &instance->rtvHandles_[backBufferIndex], false, &dsvHandle);
 		const float clearColor[] = { 0.1f, 0.25f, 0.5f, 1.0f };
-		commandList_->ClearRenderTargetView(
-			rtvHandles_[backBufferIndex], clearColor, 0, nullptr);
-		commandList_->ClearDepthStencilView(
+		instance->commandList_->ClearRenderTargetView(
+			instance->rtvHandles_[backBufferIndex], clearColor, 0, nullptr);
+		instance->commandList_->ClearDepthStencilView(
 			dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-		commandList_->RSSetViewports(1, &viewport_);
-		commandList_->RSSetScissorRects(1, &scissorRect_);
+		instance->commandList_->RSSetViewports(1, &instance->viewport_);
+		instance->commandList_->RSSetScissorRects(1, &instance->scissorRect_);
 	}
 
-	void EndFrame() {
-		const UINT backBufferIndex = swapChain_->GetCurrentBackBufferIndex();
+void EndFrame() {
+		const UINT backBufferIndex = instance->swapChain_->GetCurrentBackBufferIndex();
 		D3D12_RESOURCE_BARRIER barrier{};
 		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-		barrier.Transition.pResource = swapChainResources_[backBufferIndex].Get();
+		barrier.Transition.pResource = instance->swapChainResources_[backBufferIndex].Get();
 		barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 		barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-		commandList_->ResourceBarrier(1, &barrier);
+		instance->commandList_->ResourceBarrier(1, &barrier);
 
-		HRESULT hr = commandList_->Close();
+		HRESULT hr = instance->commandList_->Close();
 		assert(SUCCEEDED(hr));
-		ID3D12CommandList* commandLists[] = { commandList_.Get() };
-		commandQueue_->ExecuteCommandLists(1, commandLists);
-		swapChain_->Present(1, 0);
+		ID3D12CommandList* commandLists[] = { instance->commandList_.Get() };
+		instance->commandQueue_->ExecuteCommandLists(1, commandLists);
+		instance->swapChain_->Present(1, 0);
 		WaitForGPU();
 
-		hr = commandAllocator_->Reset();
+		hr = instance->commandAllocator_->Reset();
 		assert(SUCCEEDED(hr));
-		hr = commandList_->Reset(commandAllocator_.Get(), nullptr);
+		hr = instance->commandList_->Reset(instance->commandAllocator_.Get(), nullptr);
 		assert(SUCCEEDED(hr));
 	}
 
-	void ExecuteCommandListAndWait() {
-		HRESULT hr = commandList_->Close();
+void ExecuteCommandListAndWait() {
+		HRESULT hr = instance->commandList_->Close();
 		assert(SUCCEEDED(hr));
-		ID3D12CommandList* commandLists[] = { commandList_.Get() };
-		commandQueue_->ExecuteCommandLists(1, commandLists);
+		ID3D12CommandList* commandLists[] = { instance->commandList_.Get() };
+		instance->commandQueue_->ExecuteCommandLists(1, commandLists);
 		WaitForGPU();
-		hr = commandAllocator_->Reset();
+		hr = instance->commandAllocator_->Reset();
 		assert(SUCCEEDED(hr));
-		hr = commandList_->Reset(commandAllocator_.Get(), nullptr);
+		hr = instance->commandList_->Reset(instance->commandAllocator_.Get(), nullptr);
 		assert(SUCCEEDED(hr));
 	}
 
-	void CreateDevice() {
-		HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory_));
+void WaitForGPU() {
+		++instance->fenceValue_;
+		HRESULT hr = instance->commandQueue_->Signal(instance->fence_.Get(), instance->fenceValue_);
 		assert(SUCCEEDED(hr));
-
-		for (UINT index = 0; dxgiFactory_->EnumAdapterByGpuPreference(
-			index, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
-			IID_PPV_ARGS(&adapter_)) != DXGI_ERROR_NOT_FOUND;
-			++index) {
-			DXGI_ADAPTER_DESC3 adapterDesc{};
-			hr = adapter_->GetDesc3(&adapterDesc);
+		if (instance->fence_->GetCompletedValue() < instance->fenceValue_) {
+			hr = instance->fence_->SetEventOnCompletion(instance->fenceValue_, instance->fenceEvent_);
 			assert(SUCCEEDED(hr));
-			if (!(adapterDesc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE)) {
-				Log(std::format(L"Use Adapter:{}\n", adapterDesc.Description));
-				break;
-			}
-			adapter_.Reset();
-		}
-		assert(adapter_ != nullptr);
-
-		const D3D_FEATURE_LEVEL featureLevels[] = {
-			D3D_FEATURE_LEVEL_12_2,
-			D3D_FEATURE_LEVEL_12_1,
-			D3D_FEATURE_LEVEL_12_0,
-		};
-		const char* featureLevelNames[] = { "12.2", "12.1", "12.0" };
-		for (size_t index = 0; index < _countof(featureLevels); ++index) {
-			hr = D3D12CreateDevice(
-				adapter_.Get(), featureLevels[index], IID_PPV_ARGS(&device_));
-			if (SUCCEEDED(hr)) {
-				Log(std::format("FeatureLevel :{}\n", featureLevelNames[index]));
-				break;
-			}
-		}
-		assert(device_ != nullptr);
-		Log("Complete create D3D12Device!!!\n");
-	}
-
-	void SetupDebugInfoQueue() {
-#ifdef _DEBUG
-		Microsoft::WRL::ComPtr<ID3D12InfoQueue> infoQueue;
-		if (SUCCEEDED(device_->QueryInterface(IID_PPV_ARGS(&infoQueue)))) {
-			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-			infoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
-
-			D3D12_MESSAGE_ID denyIds[] = {
-				D3D12_MESSAGE_ID_RESOURCE_BARRIER_MISMATCHING_COMMAND_LIST_TYPE,
-			};
-			D3D12_MESSAGE_SEVERITY severities[] = { D3D12_MESSAGE_SEVERITY_INFO };
-			D3D12_INFO_QUEUE_FILTER filter{};
-			filter.DenyList.NumIDs = _countof(denyIds);
-			filter.DenyList.pIDList = denyIds;
-			filter.DenyList.NumSeverities = _countof(severities);
-			filter.DenyList.pSeverityList = severities;
-			infoQueue->PushStorageFilter(&filter);
-		}
-#endif
-	}
-
-	void CreateCommandObjects() {
-		D3D12_COMMAND_QUEUE_DESC commandQueueDesc{};
-		HRESULT hr = device_->CreateCommandQueue(
-			&commandQueueDesc, IID_PPV_ARGS(&commandQueue_));
-		assert(SUCCEEDED(hr));
-
-		hr = device_->CreateCommandAllocator(
-			D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&commandAllocator_));
-		assert(SUCCEEDED(hr));
-
-		hr = device_->CreateCommandList(
-			0, D3D12_COMMAND_LIST_TYPE_DIRECT, commandAllocator_.Get(), nullptr,
-			IID_PPV_ARGS(&commandList_));
-		assert(SUCCEEDED(hr));
-	}
-
-	void CreateSwapChain(
-		HWND hwnd, int32_t clientWidth, int32_t clientHeight) {
-		DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
-		swapChainDesc.Width = clientWidth;
-		swapChainDesc.Height = clientHeight;
-		swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-		swapChainDesc.SampleDesc.Count = 1;
-		swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-		swapChainDesc.BufferCount = 2;
-		swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-		HRESULT hr = dxgiFactory_->CreateSwapChainForHwnd(
-			commandQueue_.Get(), hwnd, &swapChainDesc, nullptr, nullptr,
-			reinterpret_cast<IDXGISwapChain1**>(swapChain_.GetAddressOf()));
-		assert(SUCCEEDED(hr));
-	}
-
-	void CreateRenderTargets() {
-		rtvDescriptorHeap_ =
-			CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 2);
-		const UINT descriptorSize = device_->GetDescriptorHandleIncrementSize(
-			D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-		D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{};
-		rtvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-		rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-
-		for (UINT index = 0; index < swapChainResources_.size(); ++index) {
-			HRESULT hr = swapChain_->GetBuffer(
-				index, IID_PPV_ARGS(&swapChainResources_[index]));
-			assert(SUCCEEDED(hr));
-			rtvHandles_[index] =
-				rtvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart();
-			rtvHandles_[index].ptr += static_cast<SIZE_T>(descriptorSize) * index;
-			device_->CreateRenderTargetView(
-				swapChainResources_[index].Get(), &rtvDesc, rtvHandles_[index]);
+			WaitForSingleObject(instance->fenceEvent_, INFINITE);
 		}
 	}
-
-	void CreateDepthStencil(
-		int32_t clientWidth, int32_t clientHeight) {
-		dsvDescriptorHeap_ =
-			CreateDescriptorHeap(D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1);
-		D3D12_RESOURCE_DESC resourceDesc{};
-		resourceDesc.Width = clientWidth;
-		resourceDesc.Height = clientHeight;
-		resourceDesc.MipLevels = 1;
-		resourceDesc.DepthOrArraySize = 1;
-		resourceDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-		resourceDesc.SampleDesc.Count = 1;
-		resourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		resourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
-		D3D12_HEAP_PROPERTIES heapProperties{};
-		heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
-		D3D12_CLEAR_VALUE clearValue{};
-		clearValue.DepthStencil.Depth = 1.0f;
-		clearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-		HRESULT hr = device_->CreateCommittedResource(
-			&heapProperties, D3D12_HEAP_FLAG_NONE, &resourceDesc,
-			D3D12_RESOURCE_STATE_DEPTH_WRITE, &clearValue,
-			IID_PPV_ARGS(&depthStencilResource_));
-		assert(SUCCEEDED(hr));
-
-		D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
-		dsvDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-		dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-		device_->CreateDepthStencilView(
-			depthStencilResource_.Get(), &dsvDesc,
-			dsvDescriptorHeap_->GetCPUDescriptorHandleForHeapStart());
-	}
-
-	void CreateFence() {
-		HRESULT hr = device_->CreateFence(
-			fenceValue_, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence_));
-		assert(SUCCEEDED(hr));
-		fenceEvent_ = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-		assert(fenceEvent_ != nullptr);
-	}
-
-	void WaitForGPU() {
-		++fenceValue_;
-		HRESULT hr = commandQueue_->Signal(fence_.Get(), fenceValue_);
-		assert(SUCCEEDED(hr));
-		if (fence_->GetCompletedValue() < fenceValue_) {
-			hr = fence_->SetEventOnCompletion(fenceValue_, fenceEvent_);
-			assert(SUCCEEDED(hr));
-			WaitForSingleObject(fenceEvent_, INFINITE);
-		}
-	}
-
-	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>
-		CreateDescriptorHeap(
-			D3D12_DESCRIPTOR_HEAP_TYPE type, UINT descriptorCount) {
-		D3D12_DESCRIPTOR_HEAP_DESC desc{};
-		desc.Type = type;
-		desc.NumDescriptors = descriptorCount;
-		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> descriptorHeap;
-		HRESULT hr = device_->CreateDescriptorHeap(
-			&desc, IID_PPV_ARGS(&descriptorHeap));
-		assert(SUCCEEDED(hr));
-		return descriptorHeap;
-	}
-
-} // namespace DirectXCommon
+} // namespace LegacyDirectXCommon
 
 // ============================================================================
 // 4. キーボードとマウスの入力
@@ -1013,7 +770,7 @@ namespace Audio {
 namespace Object3dCommon {
 	// 使用するデータと関数の宣言
 
-	void Initialize(ID3D12Device* device);
+	void Initialize(DirectXCommon* dxCommon);
 	void SetupDraw(ID3D12GraphicsCommandList* commandList);
 
 	void CreateRootSignature(ID3D12Device* device);
@@ -1030,22 +787,12 @@ namespace Object3dCommon {
 
 	// 処理の実装
 
-
-	namespace {
-		void Log(const std::wstring& message) {
-			OutputDebugStringW(message.c_str());
-		}
-	}
-
-	void Initialize(ID3D12Device* device) {
-		HRESULT hr = DxcCreateInstance(CLSID_DxcUtils, IID_PPV_ARGS(&dxcUtils_));
-		assert(SUCCEEDED(hr));
-		hr = DxcCreateInstance(CLSID_DxcCompiler, IID_PPV_ARGS(&dxcCompiler_));
-		assert(SUCCEEDED(hr));
-		hr = dxcUtils_->CreateDefaultIncludeHandler(&includeHandler_);
-		assert(SUCCEEDED(hr));
-
-		CreateRootSignature(device);
+	void Initialize(DirectXCommon* dxCommon) {
+        ID3D12Device* device = dxCommon->GetDevice();
+        dxcUtils_ = dxCommon->GetDxcUtils();
+        dxcCompiler_ = dxCommon->GetDxcCompiler();
+        includeHandler_ = dxCommon->GetIncludeHandler();
+        CreateRootSignature(device);
 		CreateGraphicsPipeline(device);
 	}
 
@@ -1166,7 +913,7 @@ namespace Object3dCommon {
 
 	Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(
 		const std::wstring& filePath, const wchar_t* profile) {
-		Log(std::format(
+		Logger::Log(std::format(
 			L"Begin CompileShader, path:{}, profile:{}\n", filePath, profile));
 		Microsoft::WRL::ComPtr<IDxcBlobEncoding> shaderSource;
 		HRESULT hr = dxcUtils_->LoadFile(
@@ -1194,7 +941,7 @@ namespace Object3dCommon {
 		hr = result->GetOutput(
 			DXC_OUT_OBJECT, IID_PPV_ARGS(&shaderBlob), nullptr);
 		assert(SUCCEEDED(hr));
-		Log(std::format(
+		Logger::Log(std::format(
 			L"Compile Succeeded, path:{}, profile:{}\n", filePath, profile));
 		return shaderBlob;
 	}
@@ -1219,7 +966,7 @@ namespace TextureManager {
 
 	void Initialize(
 		ID3D12Device* device,
-		ID3D12GraphicsCommandList* commandList);
+		ID3D12GraphicsCommandList* commandList, ID3D12DescriptorHeap* srvHeap);
 	TextureHandle Load(const std::string& filePath);
 	void ReleaseUploadResources();
 	void Finalize();
@@ -1251,35 +998,12 @@ namespace TextureManager {
 	// 処理の実装
 
 
-	namespace {
-		std::wstring ToWideString(const std::string& text) {
-			if (text.empty()) {
-				return {};
-			}
-			const int length = MultiByteToWideChar(
-				CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
-				nullptr, 0);
-			assert(length > 0);
-			std::wstring result(length, L'\0');
-			MultiByteToWideChar(
-				CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
-				result.data(), length);
-			return result;
-		}
-	}
-
 	void Initialize(
 		ID3D12Device* device,
-		ID3D12GraphicsCommandList* commandList) {
+		ID3D12GraphicsCommandList* commandList, ID3D12DescriptorHeap* srvHeap) {
 		device_ = device;
 		commandList_ = commandList;
-		D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-		heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		heapDesc.NumDescriptors = 128;
-		heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		HRESULT hr = device_->CreateDescriptorHeap(
-			&heapDesc, IID_PPV_ARGS(&srvDescriptorHeap_));
-		assert(SUCCEEDED(hr));
+		srvDescriptorHeap_ = srvHeap;
 		descriptorSize_ = device_->GetDescriptorHandleIncrementSize(
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 		textures_.resize(1); // 0番はImGui用に予約する。
@@ -1289,7 +1013,7 @@ namespace TextureManager {
 		const std::string& filePath) {
 		DirectX::ScratchImage image;
 		HRESULT hr = DirectX::LoadFromWICFile(
-			ToWideString(filePath).c_str(), DirectX::WIC_FLAGS_FORCE_SRGB,
+			StringUtility::ConvertString(filePath).c_str(), DirectX::WIC_FLAGS_FORCE_SRGB,
 			nullptr, image);
 		assert(SUCCEEDED(hr));
 		DirectX::ScratchImage mipImages;
@@ -1918,6 +1642,7 @@ namespace Game {
 	Input* input = nullptr;
 	// ウィンドウクラスのポインタ
 	WinApp* winApp = nullptr;
+    DirectXCommon* dxCommon = nullptr;
 
 	Audio::SoundData soundData{};
 
@@ -1955,7 +1680,10 @@ namespace Game {
 		Object3d::Finalize();
 		TextureManager::Finalize();
 		Object3dCommon::Finalize();
-		DirectXCommon::Finalize();
+		LegacyDirectXCommon::Finalize();
+        delete dxCommon;
+        dxCommon = nullptr;
+        LegacyDirectXCommon::instance = nullptr;
 		// WindowsAPIの終了と解放
 		winApp->Finalize();
 		delete winApp;
@@ -1979,10 +1707,9 @@ namespace Game {
 		// 入力クラスの生成と初期化
 		input = new Input();
 		input->Initialize(winApp);
-		DirectXCommon::Initialize(
-			winApp->GetHwnd(),
-			WinApp::kClientWidth,
-			WinApp::kClientHeight);
+		dxCommon = new DirectXCommon();
+        LegacyDirectXCommon::instance = dxCommon;
+        dxCommon->Initialize(winApp);
 	
 
 		// XAudioエンジンのインスタンスを生成
@@ -1993,11 +1720,11 @@ namespace Game {
 		soundData =
 			Audio::LoadWave("Resources/fanfare.wav");
 
-		ID3D12Device* device = DirectXCommon::GetDevice();
+		ID3D12Device* device = LegacyDirectXCommon::instance->GetDevice();
 		ID3D12GraphicsCommandList* commandList =
-			DirectXCommon::GetCommandList();
-		Object3dCommon::Initialize(device);
-		TextureManager::Initialize(device, commandList);
+			LegacyDirectXCommon::instance->GetCommandList();
+		Object3dCommon::Initialize(dxCommon);
+		TextureManager::Initialize(device, commandList, dxCommon->GetSrvDescriptorHeap());
 		Object3d::Initialize(device);
 		Sprite::Initialize(device);
 		DirectionalLight::Initialize(device);
@@ -2007,25 +1734,10 @@ namespace Game {
 			TextureManager::Load("Resources/uvChecker.png");
 		monsterBallTexture =
 			TextureManager::Load(Object3d::GetTextureFilePath());
-		DirectXCommon::ExecuteCommandListAndWait();
+		LegacyDirectXCommon::ExecuteCommandListAndWait();
 		TextureManager::ReleaseUploadResources();
 
-#ifdef USE_IMGUI
-		IMGUI_CHECKVERSION();
-		ImGui::CreateContext();
-		ImGui::StyleColorsDark();
-		ImGui_ImplWin32_Init(winApp->GetHwnd());
-		ID3D12DescriptorHeap* srvHeap =
-			TextureManager::GetDescriptorHeap();
-		ImGui_ImplDX12_Init(
-			device,
-			2,
-			DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-			srvHeap,
-			srvHeap->GetCPUDescriptorHandleForHeapStart(),
-			srvHeap->GetGPUDescriptorHandleForHeapStart());
-		ImGui::GetIO().Fonts->Build();
-#endif
+
 	}
 
 	// 毎フレーム実行。入力と設定画面を反映し、描画用の行列を更新する。
@@ -2161,8 +1873,8 @@ namespace Game {
 	// 毎フレーム実行。3Dモデル → スプライト → ImGuiの順に描画する。
 	void Draw() {
 		ID3D12GraphicsCommandList* commandList =
-			DirectXCommon::GetCommandList();
-		DirectXCommon::BeginFrame();
+			LegacyDirectXCommon::instance->GetCommandList();
+		LegacyDirectXCommon::BeginFrame();
 		Object3dCommon::SetupDraw(commandList);
 		TextureManager::SetDescriptorHeap(commandList);
 
@@ -2185,7 +1897,7 @@ namespace Game {
 		ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
 #endif
 
-		DirectXCommon::EndFrame();
+		LegacyDirectXCommon::EndFrame();
 	}
 
 	// 終了時に一度だけ実行。ImGuiと音声を終了する。
