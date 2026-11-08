@@ -1,19 +1,16 @@
 ﻿#pragma once
 #include "WinApp.h"
 #include <dxcapi.h>
+
+#include <string>
 #include <d3d12.h>
+#include "externals/DirectXTex/DirectXTex.h"
 #include <dxgi1_6.h>
 #include <wrl.h>
 #include <array>
 #include <cstdint>
 
-// 終了処理と初期テクスチャ転送は、次の移植段階までmain.cppに残す。
-namespace LegacyDirectXCommon {
-    void Finalize();
 
-    void ExecuteCommandListAndWait();
-
-}
 
 class DirectXCommon {
 public:
@@ -22,6 +19,17 @@ public:
     // シーン描画の前後に毎フレーム呼び出す。
     void PreDraw();
     void PostDraw();
+    // 初期転送コマンドの実行と終了時の解放。
+    void ExecuteCommandListAndWait();
+    void Finalize();
+    Microsoft::WRL::ComPtr<IDxcBlob> CompileShader(const std::wstring& filePath, const wchar_t* profile);
+    Microsoft::WRL::ComPtr<ID3D12Resource> CreateBufferResource(size_t sizeInBytes);
+    Microsoft::WRL::ComPtr<ID3D12Resource> CreateTextureResource(const DirectX::TexMetadata& metadata);
+    // 中間バッファの寿命はGPU転送完了まで維持する。
+    Microsoft::WRL::ComPtr<ID3D12Resource> UploadTextureData(
+        const Microsoft::WRL::ComPtr<ID3D12Resource>& texture, const DirectX::ScratchImage& mipImages);
+    static DirectX::ScratchImage LoadTexture(const std::string& filePath);
+
 	ID3D12Device* GetDevice() const { return device_.Get(); }
 	IDXGIFactory7* GetDxgiFactory() const { return dxgiFactory_.Get(); }
 	ID3D12CommandQueue* GetCommandQueue() const { return commandQueue_.Get(); }
@@ -30,9 +38,9 @@ public:
 
     // 0番のSRVはImGui用。テクスチャは1番以降を使う。
     ID3D12DescriptorHeap* GetSrvDescriptorHeap() const { return srvDescriptorHeap_.Get(); }
-    IDxcUtils* GetDxcUtils() const { return dxcUtils_.Get(); }
-    IDxcCompiler3* GetDxcCompiler() const { return dxcCompiler_.Get(); }
-    IDxcIncludeHandler* GetIncludeHandler() const { return includeHandler_.Get(); }
+
+
+
     D3D12_CPU_DESCRIPTOR_HANDLE GetSRVCPUDescriptorHandle(uint32_t index) const;
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVGPUDescriptorHandle(uint32_t index) const;
 
@@ -56,11 +64,6 @@ private:
     void CreateFence();
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> CreateDescriptorHeap(
         D3D12_DESCRIPTOR_HEAP_TYPE type, UINT descriptorCount, bool shaderVisible = false);
-
-    // 移植途中の既存処理だけに、同じ描画データへのアクセスを許可する。
-    friend void LegacyDirectXCommon::Finalize();
-
-    friend void LegacyDirectXCommon::ExecuteCommandListAndWait();
 
 
     WinApp* winApp_ = nullptr; // 所有権は持たない
