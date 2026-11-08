@@ -5,6 +5,7 @@
 #include "StringUtility.h"
 #include "externals/DirectXTex/d3dx12.h"
 #include <vector>
+#include <thread>
 #ifdef USE_IMGUI
 #include "externals/imgui/imgui.h"
 #include "externals/imgui/imgui_impl_dx12.h"
@@ -17,6 +18,7 @@
 
 
 void DirectXCommon::Initialize(WinApp* winApp) {
+    InitializeFixFPS();
     assert(winApp);
     winApp_ = winApp;
 #ifdef _DEBUG
@@ -305,6 +307,8 @@ void DirectXCommon::PostDraw() {
 		hr = swapChain_->Present(1, 0);
         assert(SUCCEEDED(hr));
 		WaitForGPU();
+        // VSyncとGPUの完了待ちを含めても短すぎるフレームだけ、追加で待つ。
+        UpdateFixFPS();
 
 		hr = commandAllocator_->Reset();
 		assert(SUCCEEDED(hr));
@@ -479,3 +483,26 @@ void DirectXCommon::ExecuteCommandListAndWait() {
 		hr = commandList_->Reset(commandAllocator_.Get(), nullptr);
 		assert(SUCCEEDED(hr));
 	}
+
+// 初期化時点を最初のフレームの基準時刻にする。
+void DirectXCommon::InitializeFixFPS() {
+    reference_ = std::chrono::steady_clock::now();
+}
+
+void DirectXCommon::UpdateFixFPS() {
+    // 1/60秒。マイクロ秒単位なので約16.67msとなる。
+    constexpr std::chrono::microseconds kMinTime(1000000 / 60);
+    // 約60HzのVSyncに対して二重に待ちすぎないための判定値。
+    constexpr std::chrono::microseconds kMinCheckTime(1000000 / 65);
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now - reference_);
+    if (elapsed < kMinCheckTime) {
+        // sleepは要求どおりの精度とは限らないので、起床ごとに時刻を確認する。
+        while (std::chrono::steady_clock::now() - reference_ < kMinTime) {
+            std::this_thread::sleep_for(std::chrono::microseconds(1));
+        }
+    }
+    // 処理が重いフレームは追加待機せず、現在時刻から次のフレームを計る。
+    reference_ = std::chrono::steady_clock::now();
+}
