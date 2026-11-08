@@ -9,6 +9,7 @@
 #include <wrl.h>
 #include <array>
 #include <cstdint>
+#include <chrono>
 
 
 
@@ -45,6 +46,11 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVGPUDescriptorHandle(uint32_t index) const;
 
 private:
+    // FPS固定の初期化と、毎フレームの待機。
+    void InitializeFixFPS();
+    void UpdateFixFPS();
+    std::chrono::steady_clock::time_point reference_{};
+
     void WaitForGPU();
     void InitializeDescriptorHeaps();
     void InitializeViewport();

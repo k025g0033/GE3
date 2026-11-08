@@ -1,5 +1,7 @@
-#include "WinApp.h"
+﻿#include "WinApp.h"
 #include <cassert>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 #ifdef USE_IMGUI
 #include "externals/imgui/imgui_impl_win32.h"
 
@@ -8,6 +10,9 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
 #endif
 
 void WinApp::Initialize() {
+    // FPS制御で使用する短いsleepの精度を上げる。
+    const MMRESULT timerResult = timeBeginPeriod(1);
+    assert(timerResult == TIMERR_NOERROR);
 	const wchar_t* title = L"GE3";
 
 	HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -67,6 +72,8 @@ LRESULT CALLBACK WinApp::WindowProc(
 void WinApp::Finalize() {
 	CloseWindow(hwnd_);
 	CoUninitialize();
+    // timeBeginPeriodと対にして、タイマー精度の要求を解除する。
+    timeEndPeriod(1);
 }
 
 bool WinApp::ProcessMessage() {
