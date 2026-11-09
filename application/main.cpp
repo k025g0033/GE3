@@ -1,4 +1,4 @@
-﻿// 自作クラスを使わず、このファイル内の変数と通常の関数で処理する。
+// 自作クラスを使わず、このファイル内の変数と通常の関数で処理する。
 // 読む順番: 末尾のWinMain → Gameの初期化・更新・描画・終了 → 各機能。
 // namespaceは同名の変数・関数を区別するための名前の整理に使用する。
 #define DIRECTINPUT_VERSION 0x0800
@@ -771,8 +771,10 @@ namespace Object3dCommon {
 		depthStencilDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
 		depthStencilDesc.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
 
-		auto vertexShader = dxCommon_->CompileShader(L"Object3d.VS.hlsl", L"vs_6_0");
-		auto pixelShader = dxCommon_->CompileShader(L"Object3d.PS.hlsl", L"ps_6_0");
+		auto vertexShader = dxCommon_->CompileShader(
+			L"Resources/shaders/Object3d.VS.hlsl", L"vs_6_0");
+		auto pixelShader = dxCommon_->CompileShader(
+			L"Resources/shaders/Object3d.PS.hlsl", L"ps_6_0");
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDesc{};
 		pipelineDesc.pRootSignature = rootSignature_.Get();
 		pipelineDesc.InputLayout = inputLayout;
