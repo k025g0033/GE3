@@ -3,8 +3,7 @@ name: DebugBuild
 on:
   push:
     branches:
-
-master
+      - master
 
 env:
   # リポジトリのルートディレクトリを基点としたソリューションファイルのパス
@@ -16,18 +15,15 @@ jobs:
   build:
     runs-on: windows-2025-vs2026
 
-    steps:
+       steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
-name: Checkout
-      uses: actions/checkout@v6
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v3
+        with:
+          msbuild-architecture: x64
 
-
-name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v3
-      with:
-        msbuild-architecture: x64
-
-
-name: Build
-      run: |
-        msbuild ${{env.SOLUTION_FILE_PATH}} /p:Platform=x64,Configuration=${{env.CONFIGURATION}}
+      - name: Build
+        run: |
+          msbuild "${{env.SOLUTION_FILE_PATH}}" /p:Platform=x64,Configuration=${{env.CONFIGURATION}}
