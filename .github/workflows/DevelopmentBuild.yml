@@ -9,7 +9,7 @@ env:
   # リポジトリのルートディレクトリを基点としたソリューションファイルのパス
   SOLUTION_FILE_PATH: project/DirectXGame.slnx
   # Visual Studio の構成(Debug / Release )
-  CONFIGURATION: Debug
+  CONFIGURATION: Development
 
 jobs:
   build:
